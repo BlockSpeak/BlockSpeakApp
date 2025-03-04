@@ -29,7 +29,8 @@ def query():
             latest_block = block_response['result']
             payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
         else:
-            return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question)
+            last_query = session.get('last_query', None)
+            return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question, last_query=last_query)
     else:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
     
@@ -48,17 +49,22 @@ def query():
                 prompt = "User asked: '" + user_question + "'. Latest Ethereum block number is " + str(block_number) + ". Answer simply."
         else:
             app.logger.error("No 'result' in response: " + str(response))
-            return render_template('index.html', answer="Oops! Blockchain data unavailable - try again.", question=user_question)
+            last_query = session.get('last_query', None)
+            return render_template('index.html', answer="Oops! Blockchain data unavailable - try again.", question=user_question, last_query=last_query)
         ai_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         answer = ai_response.choices[0].message.content
+        # Grab previous query before overwriting
+        last_query = session.get('last_query', None)
+        # Set new last query
         session['last_query'] = {'question': user_question, 'answer': answer}
-        return render_template('index.html', answer=answer, question=user_question, last_query=session['last_query'])
+        return render_template('index.html', answer=answer, question=user_question, last_query=last_query)
     except Exception as e:
         app.logger.error("Query failed: " + str(e))
-        return render_template('index.html', answer="Something went wrong - try again later!", question=user_question)
+        last_query = session.get('last_query', None)
+        return render_template('index.html', answer="Something went wrong - try again later!", question=user_question, last_query=last_query)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True)

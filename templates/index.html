@@ -13,8 +13,11 @@
             <button type="submit">Ask BlockSpeak</button>
         </form>
         {% if answer %}
-        <h3>You Asked: {{ question }}</h3>
-        <p>BlockSpeak Says: {{ answer }}</p>
+        <div class="current-answer">
+            <h3>You Asked:</h3>
+            <p><strong>{{ question }}</strong></p>
+            <p>BlockSpeak Says: {{ answer }}</p>
+        </div>
         {% endif %}
         <div class="menu">
             <button>Explore</button>
@@ -24,6 +27,12 @@
                 <a href="#">Contact</a>
             </div>
         </div>
+        {% if last_query %}
+        <div class="history">
+            <h3>Previous Ask:</h3>
+            <p><strong>{{ last_query.question }}</strong>: {{ last_query.answer }}</p>
+        </div>
+        {% endif %}
         <div class="news">
             <h3>Ethereum News</h3>
             <p><strong>March 4, 2025:</strong> Ethereum hits new milestone - latest block info now live on BlockSpeak!</p>
