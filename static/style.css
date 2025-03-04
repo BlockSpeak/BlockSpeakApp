@@ -54,6 +54,7 @@ button {
 .menu {
     position: relative;
     display: inline-block;
+    margin-top: 20px; /* Adds space above the Explore button */
 }
 
 .menu-content {
