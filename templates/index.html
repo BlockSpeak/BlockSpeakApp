@@ -6,7 +6,17 @@
 </head>
 <body>
     <div class="container">
-        <h1>Welcome to BlockSpeak!</h1>
+        <div class="header">
+            <h1>Welcome to BlockSpeak!</h1>
+            <div class="menu">
+                <button>Explore</button>
+                <div class="menu-content">
+                    <a href="#">How It Works</a>
+                    <a href="#">About</a>
+                    <a href="#">Contact</a>
+                </div>
+            </div>
+        </div>
         <p>Ask anything about blockchain in plain English.</p>
         <form method="POST" action="/query">
             <input type="text" name="question" placeholder="What's the latest Ethereum block?">
@@ -19,14 +29,6 @@
             <p>BlockSpeak Says: {{ answer }}</p>
         </div>
         {% endif %}
-        <div class="menu">
-            <button>Explore</button>
-            <div class="menu-content">
-                <a href="#">How It Works</a>
-                <a href="#">About</a>
-                <a href="#">Contact</a>
-            </div>
-        </div>
         {% if last_query %}
         <div class="history">
             <h3>Previous Ask:</h3>
