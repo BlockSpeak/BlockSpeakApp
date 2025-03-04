@@ -17,10 +17,9 @@
                 </div>
             </div>
         </div>
-        <p>Ask anything about blockchain in plain English.</p>
-        <form method="POST" action="/query">
+        <p>Ask anything about blockchain in plain English (e.g., paste a wallet address for ETH balance).</p>
+        <form method="POST" action="/query" class="query-form">
             <input type="text" name="question" placeholder="What's the latest Ethereum block?">
-            <input type="text" name="wallet_address" placeholder="Wallet address (for balance)">
             <button type="submit">Ask BlockSpeak</button>
         </form>
         {% if answer %}
