@@ -12,10 +12,10 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-def is_bitcoin_address(text):  # BTC address check first
+def is_bitcoin_address(text):  # BTC address check - case preserved
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
 
-def is_wallet_address(text):  # ETH address check
+def is_wallet_address(text):  # ETH address check - case preserved
     return text.startswith("0x") and len(text) == 42
 
 def get_news_items():
@@ -35,11 +35,12 @@ def home():
 
 @app.route('/query', methods=['POST'])
 def query():
-    user_question = request.form['question'].lower().strip()
+    user_question = request.form['question'].strip()  # No .lower() here - preserve case
+    user_question_lower = user_question.lower()  # Separate var for keyword checks
     eth_url = "https://eth-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
     sol_url = "https://solana-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
 
-    if is_bitcoin_address(user_question):  # BTC balance first
+    if is_bitcoin_address(user_question):  # Use original case
         try:
             btc_url = "https://api.blockcypher.com/v1/btc/main/addrs/" + user_question + "/balance"
             btc_response = requests.get(btc_url).json()
@@ -66,13 +67,13 @@ def query():
             last_query = session.get('last_query', None)
             news_items = get_news_items()
             return render_template('index.html', answer="Something went wrong with Bitcoin balance - try again!", question=user_question, last_query=last_query, news_items=news_items)
-    elif is_wallet_address(user_question):  # ETH balance
+    elif is_wallet_address(user_question):  # Use original case
         payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
         url = eth_url
-    elif "gas" in user_question:
+    elif "gas" in user_question_lower:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         url = eth_url
-    elif "transactions" in user_question or "many" in user_question:
+    elif "transactions" in user_question_lower or "many" in user_question_lower:
         block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         block_response = requests.post(eth_url, json=block_payload).json()
         if 'result' in block_response:
@@ -83,7 +84,7 @@ def query():
             last_query = session.get('last_query', None)
             news_items = get_news_items()
             return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question, last_query=last_query, news_items=news_items)
-    elif "bitcoin" in user_question:
+    elif "bitcoin" in user_question_lower:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
             if 'height' in btc_response:
@@ -107,7 +108,7 @@ def query():
             last_query = session.get('last_query', None)
             news_items = get_news_items()
             return render_template('index.html', answer="Something went wrong with Bitcoin - try again!", question=user_question, last_query=last_query, news_items=news_items)
-    elif "solana" in user_question:
+    elif "solana" in user_question_lower:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         url = sol_url
     else:
@@ -122,13 +123,13 @@ def query():
                 balance_wei = int(response['result'], 16)
                 balance_eth = balance_wei / 1e18
                 prompt = "User asked for balance of '" + user_question + "'. Wallet balance is " + str(balance_eth) + " ETH. Answer simply."
-            elif "gas" in user_question:
+            elif "gas" in user_question_lower:
                 gas_price = int(response['result'], 16) / 1e9
                 prompt = "User asked: '" + user_question + "'. Current Ethereum gas price is " + str(gas_price) + " Gwei. Answer simply."
-            elif "transactions" in user_question or "many" in user_question:
+            elif "transactions" in user_question_lower or "many" in user_question_lower:
                 tx_count = len(response['result']['transactions'])
                 prompt = "User asked: '" + user_question + "'. The latest Ethereum block has " + str(tx_count) + " transactions. Answer simply."
-            elif "solana" in user_question:
+            elif "solana" in user_question_lower:
                 slot_number = response['result']
                 prompt = "User asked: '" + user_question + "'. Latest Solana slot number is " + str(slot_number) + ". Answer simply."
             else:
