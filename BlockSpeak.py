@@ -1,11 +1,12 @@
 from flask import Flask, request, render_template
+import os
 import requests
 from openai import OpenAI
 
 app = Flask(__name__)
 
-ALCHEMY_API_KEY = "your_alchemy_key_here" # Placeholder—no secret here
-OPENAI_API_KEY = "OPENAI_API_KEY"  # Placeholder—no secret here
+ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
