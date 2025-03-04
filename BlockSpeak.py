@@ -41,11 +41,11 @@ def query():
 
     if is_bitcoin_address(user_question):  # BTC balance first
         try:
-            btc_url = "https://blockchain.info/balance?active=" + user_question
+            btc_url = "https://api.blockcypher.com/v1/btc/main/addrs/" + user_question + "/balance"
             btc_response = requests.get(btc_url).json()
             app.logger.info("Bitcoin Balance Response: " + str(btc_response))
-            if user_question in btc_response:
-                balance_sat = btc_response[user_question]["final_balance"]
+            if 'balance' in btc_response:
+                balance_sat = btc_response["balance"]
                 balance_btc = balance_sat / 1e8
                 prompt = "User asked for balance of '" + user_question + "'. Wallet balance is " + str(balance_btc) + " BTC. Answer simply."
                 ai_response = client.chat.completions.create(
