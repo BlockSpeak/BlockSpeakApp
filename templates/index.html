@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BlockSpeak - Ask Blockchain Anything!</title>
+</head>
+<body>
+    <h1>Welcome to BlockSpeak!</h1>
+    <p>Ask anything about blockchain in plain English.</p>
+    <form method="POST" action="/query">
+        <input type="text" name="question" placeholder="What's the latest Ethereum block?">
+        <button type="submit">Ask BlockSpeak</button>
+    </form>
+    {% if answer %}
+    <h3>You Asked: {{ question }}</h3>
+    <p>BlockSpeak Says: {{ answer }}</p>
+    {% endif %}
+</body>
+</html>

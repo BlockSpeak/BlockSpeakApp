@@ -1,0 +1,6 @@
+# Visual Studio junk
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.pyproj
