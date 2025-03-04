@@ -18,18 +18,16 @@ def home():
 def query():
     user_question = request.form['question']
     url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-    # Check what the user’s asking
     if "gas" in user_question.lower():
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
-    else:  # Default to block number
+    else:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
-    
     try:
         response = requests.post(url, json=payload).json()
         app.logger.info(f"Alchemy Response: {response}")
         if 'result' in response:
             if "gas" in user_question.lower():
-                gas_price = int(response['result'], 16) / 1e9  # Convert to Gwei
+                gas_price = int(response['result'], 16) / 1e9
                 prompt = f"User asked: '{user_question}'. Current Ethereum gas price is {gas_price} Gwei. Answer simply."
             else:
                 block_number = int(response['result'], 16)
