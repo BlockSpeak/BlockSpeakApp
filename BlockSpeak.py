@@ -39,10 +39,7 @@ def query():
     eth_url = "https://eth-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
     sol_url = "https://solana-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
 
-    if is_wallet_address(user_question):  # ETH balance
-        payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
-        url = eth_url
-    elif is_bitcoin_address(user_question):  # BTC balance
+    if is_bitcoin_address(user_question):  # BTC balance first
         try:
             btc_response = requests.get("https://blockchain.info/balance?active=" + user_question).json()
             if user_question in btc_response:
@@ -67,6 +64,9 @@ def query():
             last_query = session.get('last_query', None)
             news_items = get_news_items()
             return render_template('index.html', answer="Something went wrong with Bitcoin balance - try again!", question=user_question, last_query=last_query, news_items=news_items)
+    elif is_wallet_address(user_question):  # ETH balance
+        payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
+        url = eth_url
     elif "gas" in user_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         url = eth_url
