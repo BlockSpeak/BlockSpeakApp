@@ -13,13 +13,18 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 def is_wallet_address(text):
-    return text.startswith("0x") and len(text) == 42  # Basic ETH address check
+    return text.startswith("0x") and len(text) == 42
+
+def get_news_items():
+    feed = feedparser.parse("https://coindesk.com/feed")
+    app.logger.info("RSS Feed Status: " + str(feed.status))
+    app.logger.info("RSS Feed Entries: " + str(len(feed.entries)))
+    return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
 
 @app.route('/')
 def home():
     last_query = session.get('last_query', None)
-    news_feed = feedparser.parse("https://coindesk.com/feed")
-    news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+    news_items = get_news_items()
     return render_template('index.html', last_query=last_query, news_items=news_items)
 
 @app.route('/query', methods=['POST'])
@@ -39,8 +44,7 @@ def query():
             payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
         else:
             last_query = session.get('last_query', None)
-            news_feed = feedparser.parse("https://coindesk.com/feed")
-            news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+            news_items = get_news_items()
             return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question, last_query=last_query, news_items=news_items)
     elif "bitcoin" in user_question:
         btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -54,11 +58,12 @@ def query():
             answer = ai_response.choices[0].message.content
             last_query = session.get('last_query', None)
             session['last_query'] = {'question': user_question, 'answer': answer}
-            news_feed = feedparser.parse("https://coindesk.com/feed")
-            news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+            news_items = get_news_items()
             return render_template('index.html', answer=answer, question=user_question, last_query=last_query, news_items=news_items)
         else:
-            return render_template('index.html', answer="Oops! Could not fetch Bitcoin data.", question=user_question, last_query=session.get('last_query', None))
+            last_query = session.get('last_query', None)
+            news_items = get_news_items()
+            return render_template('index.html', answer="Oops! Could not fetch Bitcoin data.", question=user_question, last_query=last_query, news_items=news_items)
     else:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
     
@@ -82,8 +87,7 @@ def query():
         else:
             app.logger.error("No 'result' in response: " + str(response))
             last_query = session.get('last_query', None)
-            news_feed = feedparser.parse("https://coindesk.com/feed")
-            news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+            news_items = get_news_items()
             return render_template('index.html', answer="Oops! Blockchain data unavailable - try again.", question=user_question, last_query=last_query, news_items=news_items)
         ai_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -92,14 +96,12 @@ def query():
         answer = ai_response.choices[0].message.content
         last_query = session.get('last_query', None)
         session['last_query'] = {'question': user_question, 'answer': answer}
-        news_feed = feedparser.parse("https://coindesk.com/feed")
-        news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+        news_items = get_news_items()
         return render_template('index.html', answer=answer, question=user_question, last_query=last_query, news_items=news_items)
     except Exception as e:
         app.logger.error("Query failed: " + str(e))
         last_query = session.get('last_query', None)
-        news_feed = feedparser.parse("https://coindesk.com/feed")
-        news_items = [{"title": entry.title, "link": entry.link} for entry in news_feed.entries[:3]]
+        news_items = get_news_items()
         return render_template('index.html', answer="Something went wrong - try again later!", question=user_question, last_query=last_query, news_items=news_items)
 
 if __name__ == '__main__':
