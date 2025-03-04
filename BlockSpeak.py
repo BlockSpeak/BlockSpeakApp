@@ -1,5 +1,5 @@
-from flask import Flask, request, render_template
 import os
+from flask import Flask, request, render_template
 import requests
 from openai import OpenAI
 
@@ -30,4 +30,4 @@ def query():
     return render_template('index.html', answer=answer, question=user_question)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)
