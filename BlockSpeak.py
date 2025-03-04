@@ -41,7 +41,9 @@ def query():
 
     if is_bitcoin_address(user_question):  # BTC balance first
         try:
-            btc_response = requests.get("https://blockchain.info/balance?active=" + user_question).json()
+            btc_url = "https://blockchain.info/balance?active=" + user_question
+            btc_response = requests.get(btc_url).json()
+            app.logger.info("Bitcoin Balance Response: " + str(btc_response))
             if user_question in btc_response:
                 balance_sat = btc_response[user_question]["final_balance"]
                 balance_btc = balance_sat / 1e8
