@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, render_template, session
+from flask import Flask, request, render_template, session, Markup
 import requests
 from openai import OpenAI
 import feedparser
@@ -59,9 +59,9 @@ def get_trending_crypto():
 
 def get_x_profiles():
     return [
-        {"name": "Bitcoin", "link": "https://x.com/Bitcoin", "image": "https://pbs.twimg.com/profile_images/1818369981355171840/WGnaKq3N_400x400.jpg"},
-        {"name": "Ethereum", "link": "https://x.com/ethereum", "image": "https://pbs.twimg.com/profile_images/1694442176691351552/Jr_mJ2Mk_400x400.jpg"},
-        {"name": "Solana", "link": "https://x.com/Solana", "image": "https://pbs.twimg.com/profile_images/1818114199074267136/9HitQh8G_400x400.jpg"}
+        {"name": "Bitcoin", "link": "https://x.com/Bitcoin", "image": "https://pbs.twimg.com/profile_images/1818369981355171840/WGnaKq3N_normal.jpg"},
+        {"name": "Ethereum", "link": "https://x.com/ethereum", "image": "https://pbs.twimg.com/profile_images/1694442176691351552/Jr_mJ2Mk_normal.jpg"},
+        {"name": "Solana", "link": "https://x.com/Solana", "image": "https://pbs.twimg.com/profile_images/1818114199074267136/9HitQh8G_normal.jpg"}
     ]
 
 def get_news_items():
@@ -149,7 +149,7 @@ def query():
         return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
-        answer = "Here is what is trending in crypto right now:\n" + "\n".join([t["topic"] + ": " + t["snippet"] + " (See Post Now: " + t["link"] + ")" for t in trends])
+        answer = Markup("Here is what is trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
         history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
