@@ -6,6 +6,7 @@ import feedparser
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # For session
+app.config['SESSION_TYPE'] = 'filesystem'  # For history persistence
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -18,18 +19,32 @@ def is_bitcoin_address(text):
 def is_wallet_address(text):
     return text.startswith("0x") and len(text) == 42
 
-def is_solana_address(text):  # Basic Solana address check
+def is_solana_address(text):
     return len(text) == 44 and all(c in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz" for c in text)
 
 def normalize_question(text):
     text = text.lower().strip()
     if "solona" in text or "solana" in text or "sol" in text:
-        return "solana block"
+        return "solana block" if "block" in text else "solana price"
     elif "bitcoin" in text or "btc" in text:
-        return "bitcoin block"
+        return "bitcoin block" if "block" in text else "bitcoin price"
     elif "eth" in text or "ethereum" in text:
-        return "ethereum block"
+        return "ethereum block" if "block" in text else "ethereum price"
     return text
+
+def get_crypto_price(coin):
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=" + coin + "&vs_currencies=usd"
+    response = requests.get(url).json()
+    return response.get(coin, {}).get("usd", "Price unavailable")
+
+def get_trending_crypto():
+    # Simulated X search (real data later)
+    trends = [
+        {"topic": "Bitcoin ETF", "volume": "50K posts"},
+        {"topic": "Ethereum staking", "volume": "30K posts"},
+        {"topic": "Solana NFT boom", "volume": "20K posts"}
+    ]
+    return trends
 
 def get_news_items():
     feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -42,9 +57,9 @@ def get_news_items():
 
 @app.route('/')
 def home():
-    last_query = session.get('last_query', None)
+    session['history'] = session.get('history', [])  # Init history if not set
     news_items = get_news_items()
-    return render_template('index.html', last_query=last_query, news_items=news_items)
+    return render_template('index.html', history=session['history'], news_items=news_items, trends=get_trending_crypto())
 
 @app.route('/query', methods=['POST'])
 def query():
@@ -67,25 +82,51 @@ def query():
                     messages=[{"role": "user", "content": prompt}]
                 )
                 answer = ai_response.choices[0].message.content
-                last_query = session.get('last_query', None)
-                session['last_query'] = {'question': user_question, 'answer': answer}
+                history = session.get('history', [])
+                history.insert(0, {'question': user_question, 'answer': answer})
+                session['history'] = history[:5]
                 news_items = get_news_items()
-                return render_template('index.html', answer=answer, question=user_question, last_query=last_query, news_items=news_items)
+                return render_template('index.html', answer=answer, question=user_question, history=session['history'], news_items=news_items, trends=get_trending_crypto())
             else:
-                last_query = session.get('last_query', None)
+                history = session.get('history', [])
                 news_items = get_news_items()
-                return render_template('index.html', answer="Oops! Invalid Bitcoin address or no data.", question=user_question, last_query=last_query, news_items=news_items)
+                return render_template('index.html', answer="Oops! Invalid Bitcoin address or no data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
         except Exception as e:
             app.logger.error("Bitcoin balance query failed: " + str(e))
-            last_query = session.get('last_query', None)
+            history = session.get('history', [])
             news_items = get_news_items()
-            return render_template('index.html', answer="Something went wrong with Bitcoin balance - try again!", question=user_question, last_query=last_query, news_items=news_items)
+            return render_template('index.html', answer="Something went wrong with Bitcoin balance - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
     elif is_wallet_address(user_question):
         payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
         url = eth_url
     elif is_solana_address(user_question):
         payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [user_question], "id": 1}
         url = sol_url
+    elif "price" in normalized_question:
+        if "bitcoin" in normalized_question:
+            price = get_crypto_price("bitcoin")
+            answer = "The current Bitcoin price is $" + str(price) + " USD."
+        elif "ethereum" in normalized_question:
+            price = get_crypto_price("ethereum")
+            answer = "The current Ethereum price is $" + str(price) + " USD."
+        elif "solana" in normalized_question:
+            price = get_crypto_price("solana")
+            answer = "The current Solana price is $" + str(price) + " USD."
+        else:
+            answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
+        history = session.get('history', [])
+        history.insert(0, {'question': user_question, 'answer': answer})
+        session['history'] = history[:5]
+        news_items = get_news_items()
+        return render_template('index.html', answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+    elif "trending" in normalized_question or "buzz" in normalized_question:
+        trends = get_trending_crypto()
+        answer = "Here’s what’s trending in crypto:\n" + "\n".join([t["topic"] + " (" + t["volume"] + ")" for t in trends])
+        history = session.get('history', [])
+        history.insert(0, {'question': user_question, 'answer': answer})
+        session['history'] = history[:5]
+        news_items = get_news_items()
+        return render_template('index.html', answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         url = eth_url
@@ -97,9 +138,9 @@ def query():
             payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
             url = eth_url
         else:
-            last_query = session.get('last_query', None)
+            history = session.get('history', [])
             news_items = get_news_items()
-            return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question, last_query=last_query, news_items=news_items)
+            return render_template('index.html', answer="Oops! Could not fetch block data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -111,19 +152,20 @@ def query():
                     messages=[{"role": "user", "content": prompt}]
                 )
                 answer = ai_response.choices[0].message.content
-                last_query = session.get('last_query', None)
-                session['last_query'] = {'question': user_question, 'answer': answer}
+                history = session.get('history', [])
+                history.insert(0, {'question': user_question, 'answer': answer})
+                session['history'] = history[:5]
                 news_items = get_news_items()
-                return render_template('index.html', answer=answer, question=user_question, last_query=last_query, news_items=news_items)
+                return render_template('index.html', answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
             else:
-                last_query = session.get('last_query', None)
+                history = session.get('history', [])
                 news_items = get_news_items()
-                return render_template('index.html', answer="Oops! Could not fetch Bitcoin data.", question=user_question, last_query=last_query, news_items=news_items)
+                return render_template('index.html', answer="Oops! Could not fetch Bitcoin data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
         except Exception as e:
             app.logger.error("Bitcoin block query failed: " + str(e))
-            last_query = session.get('last_query', None)
+            history = session.get('history', [])
             news_items = get_news_items()
-            return render_template('index.html', answer="Something went wrong with Bitcoin - try again!", question=user_question, last_query=last_query, news_items=news_items)
+            return render_template('index.html', answer="Something went wrong with Bitcoin - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         url = sol_url
@@ -157,23 +199,24 @@ def query():
                 prompt = "User asked: '" + user_question + "'. Latest Ethereum block number is " + str(block_number) + ". Answer simply."
         else:
             app.logger.error("No 'result' in response: " + str(response))
-            last_query = session.get('last_query', None)
+            history = session.get('history', [])
             news_items = get_news_items()
-            return render_template('index.html', answer="Oops! Blockchain data unavailable - try again.", question=user_question, last_query=last_query, news_items=news_items)
+            return render_template('index.html', answer="Oops! Blockchain data unavailable - try again.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
         ai_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
         )
         answer = ai_response.choices[0].message.content
-        last_query = session.get('last_query', None)
-        session['last_query'] = {'question': user_question, 'answer': answer}
+        history = session.get('history', [])
+        history.insert(0, {'question': user_question, 'answer': answer})
+        session['history'] = history[:5]
         news_items = get_news_items()
-        return render_template('index.html', answer=answer, question=user_question, last_query=last_query, news_items=news_items)
+        return render_template('index.html', answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
     except Exception as e:
         app.logger.error("Query failed: " + str(e))
-        last_query = session.get('last_query', None)
+        history = session.get('history', [])
         news_items = get_news_items()
-        return render_template('index.html', answer="Something went wrong - try again later!", question=user_question, last_query=last_query, news_items=news_items)
+        return render_template('index.html', answer="Something went wrong - try again later!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True)
