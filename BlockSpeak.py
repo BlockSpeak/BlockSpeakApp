@@ -133,7 +133,7 @@ def get_wallet_analytics(address):
             balance_lamports = balance_response["result"]["value"]
             balance_sol = balance_lamports / 1e9
             # Tx Count
-            payload = {"jsonrpc": "2.0", "method": "getConfirmedSignaturesForAddress2", "params": [address, {"limit": 1000}], "id": 1}
+            payload = {"jsonrpc": "2.0", "method": "getSignaturesForAddress", "params": [address, {"limit": 1000}], "id": 1}
             tx_response = requests.post(sol_url, json=payload).json()
             if "result" not in tx_response:
                 app.logger.error(f"Solana tx response missing 'result': {tx_response}")
