@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>About Us - BlockSpeak</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>About Us</h1>
+            <div class="menu">
+                <button>Explore</button>
+                <div class="menu-content">
+                    <a href="{{ url_for('how_it_works') }}">How It Works</a>
+                    <a href="{{ url_for('about') }}">About Us</a>
+                    <a href="{{ url_for('home') }}">Home</a>
+                </div>
+            </div>
+        </div>
+        <p>We are BlockSpeak, your friendly guide to the blockchain world. Our mission is simple: make crypto easy to understand and explore for everyone. Ask us anything—block numbers, wallet balances, prices, or trends—and we will break it down in plain English. Built by a team passionate about blockchain’s future, we are here to help you navigate the chaos and unlock its potential.</p>
+        {% if history %}
+        <div class="history">
+            <h3>Recent Queries</h3>
+            {% for entry in history %}
+            <p><strong>{{ entry.question }}</strong>: {{ entry.answer }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

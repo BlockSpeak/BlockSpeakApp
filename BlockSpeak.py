@@ -62,6 +62,16 @@ def home():
     news_items = get_news_items()
     return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto())
 
+@app.route("/about")
+def about():
+    session["history"] = session.get("history", [])  # Keep history consistent
+    return render_template("about.html", history=session["history"])
+
+@app.route("/how-it-works")
+def how_it_works():
+    session["history"] = session.get("history", [])  # Keep history consistent
+    return render_template("how_it_works.html", history=session["history"])
+
 @app.route("/query", methods=["POST"])
 def query():
     user_question = request.form["question"].strip()

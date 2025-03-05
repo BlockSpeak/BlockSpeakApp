@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>How It Works - BlockSpeak</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>How It Works</h1>
+            <div class="menu">
+                <button>Explore</button>
+                <div class="menu-content">
+                    <a href="{{ url_for('how_it_works') }}">How It Works</a>
+                    <a href="{{ url_for('about') }}">About Us</a>
+                    <a href="{{ url_for('home') }}">Home</a>
+                </div>
+            </div>
+        </div>
+        <p>BlockSpeak is your crypto sidekick. Just type a question in plain English—like "What is the gas price?" or "What is trending in crypto?"—and we will fetch the latest blockchain data and explain it simply. Paste a wallet address (ETH, BTC, SOL) for balances, ask about blocks, prices, or buzz—we have got you covered. It is fast, easy, and built to make blockchain less of a mystery.</p>
+        {% if history %}
+        <div class="history">
+            <h3>Recent Queries</h3>
+            {% for entry in history %}
+            <p><strong>{{ entry.question }}</strong>: {{ entry.answer }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
