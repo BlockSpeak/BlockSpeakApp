@@ -60,9 +60,9 @@ def get_trending_crypto():
 
 def get_x_profiles():
     return [
-        {"name": "Bitcoin", "link": "https://x.com/Bitcoin", "image": "https://pbs.twimg.com/profile_images/1818369981355171840/WGnaKq3N_normal.jpg"},
-        {"name": "Ethereum", "link": "https://x.com/ethereum", "image": "https://pbs.twimg.com/profile_images/1694442176691351552/Jr_mJ2Mk_normal.jpg"},
-        {"name": "Solana", "link": "https://x.com/Solana", "image": "https://pbs.twimg.com/profile_images/1818114199074267136/9HitQh8G_normal.jpg"}
+        {"name": "Bitcoin", "link": "https://x.com/Bitcoin"},
+        {"name": "Ethereum", "link": "https://x.com/ethereum"},
+        {"name": "Solana", "link": "https://x.com/Solana"}
     ]
 
 def get_news_items():

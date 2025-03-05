@@ -52,10 +52,7 @@
             <h3>Learn More on X</h3>
             <div class="profile-list">
                 {% for profile in x_profiles %}
-                <a href="{{ profile.link }}" target="_blank" class="profile-item">
-                    <img src="{{ profile.image }}" alt="{{ profile.name }} Profile">
-                    <span>{{ profile.name }}</span>
-                </a>
+                <a href="{{ profile.link }}" target="_blank" class="profile-item">{{ profile.name }}</a>
                 {% endfor %}
             </div>
         </div>
