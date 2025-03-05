@@ -45,7 +45,7 @@
         <div class="trends">
             <h3>Trending in Crypto</h3>
             {% for trend in trends %}
-            <p>{{ trend.topic }} ({{ trend.volume }})</p>
+            <p><strong>{{ trend.topic }}</strong>: {{ trend.snippet }} <a href="{{ trend.link }}" target="_blank">See X Post</a></p>
             {% endfor %}
         </div>
     </div>
