@@ -24,7 +24,9 @@ def is_solana_address(text):
 
 def normalize_question(text):
     text = text.lower().strip()
-    if "solona" in text or "solana" in text or "sol" in text:
+    if "gas" in text:
+        return "gas"
+    elif "solona" in text or "solana" in text or "sol" in text:
         return "solana block" if "block" in text else "solana price"
     elif "bitcoin" in text or "btc" in text:
         return "bitcoin block" if "block" in text else "bitcoin price"
