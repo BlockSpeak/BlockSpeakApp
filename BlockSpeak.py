@@ -40,13 +40,29 @@ def get_crypto_price(coin):
     return response.get(coin, {}).get("usd", "Price unavailable")
 
 def get_trending_crypto():
-    # Simulated X trends - real data fetched by me
-    trends = [
-        {"topic": "BTC ETF Approval", "snippet": "SEC greenlights new ETF!", "link": "https://x.com/example/status/123"},
-        {"topic": "ETH Staking Surge", "snippet": "Staking hits record highs.", "link": "https://x.com/example/status/456"},
-        {"topic": "SOL NFT Hype", "snippet": "New NFT drop sells out!", "link": "https://x.com/example/status/789"}
-    ]
-    return trends
+    url = "https://api.coingecko.com/api/v3/search/trending"
+    try:
+        response = requests.get(url).json()
+        coins = response.get("coins", [])[:3]  # Top 3 trending
+        trends = []
+        x_links = {
+            "bitcoin": "https://x.com/Bitcoin",
+            "ethereum": "https://x.com/ethereum",
+            "solana": "https://x.com/Solana"
+        }
+        for coin in coins:
+            item = coin["item"]
+            coin_id = item["id"].lower()
+            x_link = x_links.get(coin_id, "https://www.coingecko.com/en/coins/" + item["id"])
+            trends.append({
+                "topic": item["name"],
+                "snippet": "Trending on CoinGecko - Rank " + str(item["market_cap_rank"]),
+                "link": x_link
+            })
+        return trends
+    except Exception as e:
+        app.logger.error("Trending fetch failed: " + str(e))
+        return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
 
 def get_news_items():
     feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
