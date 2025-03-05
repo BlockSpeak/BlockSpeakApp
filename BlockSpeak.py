@@ -74,6 +74,77 @@ def get_news_items():
         return [{"title": "News unavailable - check back later!", "link": "#"}]
     return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
 
+def get_wallet_analytics(address):
+    analytics = {}
+    if is_bitcoin_address(address):
+        try:
+            btc_url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance"
+            btc_response = requests.get(btc_url).json()
+            balance_sat = btc_response.get("balance", 0)
+            balance_btc = balance_sat / 1e8
+            tx_count = btc_response.get("n_tx", 0)
+            analytics = {
+                "chain": "Bitcoin",
+                "balance": f"{balance_btc:.8f} BTC",
+                "tx_count": tx_count,
+                "gas_spent": "N/A",
+                "top_tokens": "N/A"
+            }
+        except Exception as e:
+            app.logger.error(f"BTC analytics failed: {str(e)}")
+            return {"error": "Could not fetch Bitcoin analytics"}
+    elif is_wallet_address(address):
+        try:
+            eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+            # Balance
+            payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [address, "latest"], "id": 1}
+            balance_response = requests.post(eth_url, json=payload).json()
+            balance_wei = int(balance_response["result"], 16)
+            balance_eth = balance_wei / 1e18
+            # Tx Count
+            payload = {"jsonrpc": "2.0", "method": "eth_getTransactionCount", "params": [address, "latest"], "id": 1}
+            tx_response = requests.post(eth_url, json=payload).json()
+            tx_count = int(tx_response["result"], 16)
+            # Gas Spent (approx, last 30 days - simplified)
+            gas_spent_wei = 0  # Placeholder - needs full tx history for accuracy
+            eth_price = get_crypto_price("ethereum")
+            gas_spent_usd = "N/A" if eth_price == "Price unavailable" else f"${(gas_spent_wei / 1e18 * float(eth_price)):.2f}"
+            # Top Tokens (simplified - just ETH for now)
+            top_tokens = "ETH only (more coming soon)"
+            analytics = {
+                "chain": "Ethereum",
+                "balance": f"{balance_eth:.4f} ETH",
+                "tx_count": tx_count,
+                "gas_spent": gas_spent_usd,
+                "top_tokens": top_tokens
+            }
+        except Exception as e:
+            app.logger.error(f"ETH analytics failed: {str(e)}")
+            return {"error": "Could not fetch Ethereum analytics"}
+    elif is_solana_address(address):
+        try:
+            sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+            payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [address], "id": 1}
+            balance_response = requests.post(sol_url, json=payload).json()
+            balance_lamports = balance_response["result"]["value"]
+            balance_sol = balance_lamports / 1e9
+            payload = {"jsonrpc": "2.0", "method": "getConfirmedSignaturesForAddress2", "params": [address, {"limit": 1000}], "id": 1}
+            tx_response = requests.post(sol_url, json=payload).json()
+            tx_count = len(tx_response["result"])
+            analytics = {
+                "chain": "Solana",
+                "balance": f"{balance_sol:.4f} SOL",
+                "tx_count": tx_count,
+                "gas_spent": "N/A",
+                "top_tokens": "SOL only (more coming soon)"
+            }
+        except Exception as e:
+            app.logger.error(f"SOL analytics failed: {str(e)}")
+            return {"error": "Could not fetch Solana analytics"}
+    else:
+        return {"error": "Invalid wallet address"}
+    return analytics
+
 @app.route("/")
 def home():
     session["history"] = session.get("history", [])  # Init history if not set
@@ -94,53 +165,30 @@ def how_it_works():
 def query():
     user_question = request.form["question"].strip()
     normalized_question = normalize_question(user_question)
-    eth_url = "https://eth-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
-    sol_url = "https://solana-mainnet.g.alchemy.com/v2/" + ALCHEMY_API_KEY
+    eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+    sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
-    if is_bitcoin_address(user_question):
-        try:
-            btc_url = "https://api.blockcypher.com/v1/btc/main/addrs/" + user_question + "/balance"
-            btc_response = requests.get(btc_url).json()
-            app.logger.info("Bitcoin Balance Response: " + str(btc_response))
-            if "balance" in btc_response:
-                balance_sat = btc_response["balance"]
-                balance_btc = balance_sat / 1e8
-                prompt = "User asked for balance of " + user_question + ". Wallet balance is " + str(balance_btc) + " BTC. Answer simply."
-                ai_response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                answer = ai_response.choices[0].message.content
-                history = session.get("history", [])
-                history.insert(0, {"question": user_question, "answer": answer})
-                session["history"] = history[:5]
-                news_items = get_news_items()
-                return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-            else:
-                history = session.get("history", [])
-                news_items = get_news_items()
-                return render_template("index.html", answer="Oops! Invalid Bitcoin address or no data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-        except Exception as e:
-            app.logger.error("Bitcoin balance query failed: " + str(e))
-            history = session.get("history", [])
-            news_items = get_news_items()
-            return render_template("index.html", answer="Something went wrong with Bitcoin balance - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    elif is_wallet_address(user_question):
-        payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
-        url = eth_url
-    elif is_solana_address(user_question):
-        payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [user_question], "id": 1}
-        url = sol_url
+    if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
+        analytics = get_wallet_analytics(user_question)
+        if "error" in analytics:
+            answer = analytics["error"]
+        else:
+            answer = Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}")
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer})
+        session["history"] = history[:5]
+        news_items = get_news_items()
+        return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif "price" in normalized_question:
         if "bitcoin" in normalized_question:
             price = get_crypto_price("bitcoin")
-            answer = "The current Bitcoin price is $" + str(price) + " USD."
+            answer = f"The current Bitcoin price is ${price} USD."
         elif "ethereum" in normalized_question:
             price = get_crypto_price("ethereum")
-            answer = "The current Ethereum price is $" + str(price) + " USD."
+            answer = f"The current Ethereum price is ${price} USD."
         elif "solana" in normalized_question:
             price = get_crypto_price("solana")
-            answer = "The current Solana price is $" + str(price) + " USD."
+            answer = f"The current Solana price is ${price} USD."
         else:
             answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
         history = session.get("history", [])
@@ -175,7 +223,7 @@ def query():
             btc_response = requests.get("https://blockchain.info/latestblock").json()
             if "height" in btc_response:
                 block_number = btc_response["height"]
-                prompt = "User asked: " + user_question + ". Latest Bitcoin block number is " + str(block_number) + ". Answer simply."
+                prompt = f"User asked: {user_question}. Latest Bitcoin block number is {block_number}. Answer simply."
                 ai_response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": prompt}]
@@ -191,7 +239,7 @@ def query():
                 news_items = get_news_items()
                 return render_template("index.html", answer="Oops! Could not fetch Bitcoin data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
         except Exception as e:
-            app.logger.error("Bitcoin block query failed: " + str(e))
+            app.logger.error(f"Bitcoin block query failed: {str(e)}")
             history = session.get("history", [])
             news_items = get_news_items()
             return render_template("index.html", answer="Something went wrong with Bitcoin - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
@@ -204,30 +252,22 @@ def query():
     
     try:
         response = requests.post(url, json=payload).json()
-        app.logger.info("Alchemy Response: " + str(response))
+        app.logger.info(f"Alchemy Response: {str(response)}")
         if "result" in response:
-            if is_wallet_address(user_question):
-                balance_wei = int(response["result"], 16)
-                balance_eth = balance_wei / 1e18
-                prompt = "User asked for balance of " + user_question + ". Wallet balance is " + str(balance_eth) + " ETH. Answer simply."
-            elif is_solana_address(user_question):
-                balance_lamports = response["result"]["value"]
-                balance_sol = balance_lamports / 1e9
-                prompt = "User asked for balance of " + user_question + ". Wallet balance is " + str(balance_sol) + " SOL. Answer simply."
-            elif "gas" in normalized_question:
+            if "gas" in normalized_question:
                 gas_price = int(response["result"], 16) / 1e9
-                prompt = "User asked: " + user_question + ". Current Ethereum gas price is " + str(gas_price) + " Gwei. Answer simply."
+                prompt = f"User asked: {user_question}. Current Ethereum gas price is {gas_price} Gwei. Answer simply."
             elif "transactions" in normalized_question or "many" in normalized_question:
                 tx_count = len(response["result"]["transactions"])
-                prompt = "User asked: " + user_question + ". The latest Ethereum block has " + str(tx_count) + " transactions. Answer simply."
+                prompt = f"User asked: {user_question}. The latest Ethereum block has {tx_count} transactions. Answer simply."
             elif "solana block" in normalized_question:
                 slot_number = response["result"]
-                prompt = "User asked: " + user_question + ". Latest Solana slot number is " + str(slot_number) + ". Answer simply."
+                prompt = f"User asked: {user_question}. Latest Solana slot number is {slot_number}. Answer simply."
             else:
                 block_number = int(response["result"], 16)
-                prompt = "User asked: " + user_question + ". Latest Ethereum block number is " + str(block_number) + ". Answer simply."
+                prompt = f"User asked: {user_question}. Latest Ethereum block number is {block_number}. Answer simply."
         else:
-            app.logger.error("No result in response: " + str(response))
+            app.logger.error(f"No result in response: {str(response)}")
             history = session.get("history", [])
             news_items = get_news_items()
             return render_template("index.html", answer="Oops! Blockchain data unavailable - try again.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
@@ -242,7 +282,7 @@ def query():
         news_items = get_news_items()
         return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     except Exception as e:
-        app.logger.error("Query failed: " + str(e))
+        app.logger.error(f"Query failed: {str(e)}")
         history = session.get("history", [])
         news_items = get_news_items()
         return render_template("index.html", answer="Something went wrong - try again later!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
