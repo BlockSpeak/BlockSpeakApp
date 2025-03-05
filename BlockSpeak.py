@@ -55,7 +55,7 @@ def get_trending_crypto():
             })
         return trends
     except Exception as e:
-        app.logger.error("Trending fetch failed: " + str(e))
+        app.logger.error(f"Trending fetch failed: {str(e)}")
         return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
 
 def get_x_profiles():
@@ -68,8 +68,8 @@ def get_x_profiles():
 def get_news_items():
     feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     feed = feedparser.parse("https://coinjournal.net/feed/")
-    app.logger.info("RSS Feed Status: " + str(feed.status))
-    app.logger.info("RSS Feed Entries: " + str(len(feed.entries)))
+    app.logger.info(f"RSS Feed Status: {str(feed.status)}")
+    app.logger.info(f"RSS Feed Entries: {str(len(feed.entries))}")
     if feed.status != 200 or not feed.entries:
         return [{"title": "News unavailable - check back later!", "link": "#"}]
     return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
@@ -124,12 +124,20 @@ def get_wallet_analytics(address):
     elif is_solana_address(address):
         try:
             sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+            # Balance
             payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [address], "id": 1}
             balance_response = requests.post(sol_url, json=payload).json()
+            if "result" not in balance_response:
+                app.logger.error(f"Solana balance response missing 'result': {balance_response}")
+                return {"error": "Invalid Solana address or API error"}
             balance_lamports = balance_response["result"]["value"]
             balance_sol = balance_lamports / 1e9
+            # Tx Count
             payload = {"jsonrpc": "2.0", "method": "getConfirmedSignaturesForAddress2", "params": [address, {"limit": 1000}], "id": 1}
             tx_response = requests.post(sol_url, json=payload).json()
+            if "result" not in tx_response:
+                app.logger.error(f"Solana tx response missing 'result': {tx_response}")
+                return {"error": "Could not fetch Solana transaction data"}
             tx_count = len(tx_response["result"])
             analytics = {
                 "chain": "Solana",
