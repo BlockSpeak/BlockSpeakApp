@@ -6,8 +6,8 @@ from openai import OpenAI
 import feedparser
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # For session
-app.config["SESSION_TYPE"] = "filesystem"  # For history persistence
+app.secret_key = "supersecretkey"
+app.config["SESSION_TYPE"] = "filesystem"
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -36,7 +36,7 @@ def normalize_question(text):
     return text
 
 def get_crypto_price(coin):
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=" + coin + "&vs_currencies=usd"
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
     response = requests.get(url).json()
     return response.get(coin, {}).get("usd", "Price unavailable")
 
@@ -44,14 +44,14 @@ def get_trending_crypto():
     url = "https://api.coingecko.com/api/v3/search/trending"
     try:
         response = requests.get(url).json()
-        coins = response.get("coins", [])[:3]  # Top 3 trending
+        coins = response.get("coins", [])[:3]
         trends = []
         for coin in coins:
             item = coin["item"]
             trends.append({
                 "topic": item["name"],
-                "snippet": "Trending on CoinGecko - Rank " + str(item["market_cap_rank"]),
-                "link": "https://www.coingecko.com/en/coins/" + item["id"]
+                "snippet": f"Trending on CoinGecko - Rank {item['market_cap_rank']}",
+                "link": f"https://www.coingecko.com/en/coins/{item['id']}"
             })
         return trends
     except Exception as e:
@@ -83,12 +83,14 @@ def get_wallet_analytics(address):
             balance_sat = btc_response.get("balance", 0)
             balance_btc = balance_sat / 1e8
             tx_count = btc_response.get("n_tx", 0)
+            hot_wallet = "Yes" if tx_count > 50 else "No"
             analytics = {
                 "chain": "Bitcoin",
                 "balance": f"{balance_btc:.8f} BTC",
                 "tx_count": tx_count,
                 "gas_spent": "N/A",
-                "top_tokens": "N/A"
+                "top_tokens": "N/A",
+                "hot_wallet": hot_wallet
             }
         except Exception as e:
             app.logger.error(f"BTC analytics failed: {str(e)}")
@@ -105,18 +107,24 @@ def get_wallet_analytics(address):
             payload = {"jsonrpc": "2.0", "method": "eth_getTransactionCount", "params": [address, "latest"], "id": 1}
             tx_response = requests.post(eth_url, json=payload).json()
             tx_count = int(tx_response["result"], 16)
-            # Gas Spent (approx, last 30 days - simplified)
-            gas_spent_wei = 0  # Placeholder - needs full tx history for accuracy
+            # Gas Spent (placeholder)
+            gas_spent_wei = 0
             eth_price = get_crypto_price("ethereum")
             gas_spent_usd = "N/A" if eth_price == "Price unavailable" else f"${(gas_spent_wei / 1e18 * float(eth_price)):.2f}"
-            # Top Tokens (simplified - just ETH for now)
-            top_tokens = "ETH only (more coming soon)"
+            # Top Tokens (basic ERC-20 check - USDT as example)
+            usdt_contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+            payload = {"jsonrpc": "2.0", "method": "eth_call", "params": [{"to": usdt_contract, "data": f"0x70a08231000000000000000000000000{address[2:]}"}, "latest"], "id": 1}
+            token_response = requests.post(eth_url, json=payload).json()
+            usdt_balance = int(token_response["result"], 16) / 1e6 if "result" in token_response else 0
+            top_tokens = f"ETH, USDT ({usdt_balance:.2f})" if usdt_balance > 0 else "ETH only"
+            hot_wallet = "Yes" if tx_count > 50 else "No"
             analytics = {
                 "chain": "Ethereum",
                 "balance": f"{balance_eth:.4f} ETH",
                 "tx_count": tx_count,
                 "gas_spent": gas_spent_usd,
-                "top_tokens": top_tokens
+                "top_tokens": top_tokens,
+                "hot_wallet": hot_wallet
             }
         except Exception as e:
             app.logger.error(f"ETH analytics failed: {str(e)}")
@@ -124,7 +132,6 @@ def get_wallet_analytics(address):
     elif is_solana_address(address):
         try:
             sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-            # Balance
             payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [address], "id": 1}
             balance_response = requests.post(sol_url, json=payload).json()
             if "result" not in balance_response:
@@ -132,19 +139,20 @@ def get_wallet_analytics(address):
                 return {"error": "Invalid Solana address or API error"}
             balance_lamports = balance_response["result"]["value"]
             balance_sol = balance_lamports / 1e9
-            # Tx Count
             payload = {"jsonrpc": "2.0", "method": "getSignaturesForAddress", "params": [address, {"limit": 1000}], "id": 1}
             tx_response = requests.post(sol_url, json=payload).json()
             if "result" not in tx_response:
                 app.logger.error(f"Solana tx response missing 'result': {tx_response}")
                 return {"error": "Could not fetch Solana transaction data"}
             tx_count = len(tx_response["result"])
+            hot_wallet = "Yes" if tx_count > 50 else "No"
             analytics = {
                 "chain": "Solana",
                 "balance": f"{balance_sol:.4f} SOL",
                 "tx_count": tx_count,
                 "gas_spent": "N/A",
-                "top_tokens": "SOL only (more coming soon)"
+                "top_tokens": "SOL only (more coming soon)",
+                "hot_wallet": hot_wallet
             }
         except Exception as e:
             app.logger.error(f"SOL analytics failed: {str(e)}")
@@ -155,7 +163,7 @@ def get_wallet_analytics(address):
 
 @app.route("/")
 def home():
-    session["history"] = session.get("history", [])  # Init history if not set
+    session["history"] = session.get("history", [])
     news_items = get_news_items()
     return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
 
@@ -181,7 +189,7 @@ def query():
         if "error" in analytics:
             answer = analytics["error"]
         else:
-            answer = Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}")
+            answer = Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}")
         history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
