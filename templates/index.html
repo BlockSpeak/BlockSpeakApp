@@ -45,8 +45,19 @@
         <div class="trends">
             <h3>Trending in Crypto</h3>
             {% for trend in trends %}
-            <p><strong>{{ trend.topic }}</strong>: {{ trend.snippet }} <a href="{{ trend.link }}" target="_blank">See X Post</a></p>
+            <p><strong>{{ trend.topic }}</strong>: {{ trend.snippet }} <a href="{{ trend.link }}" target="_blank">See Post Now</a></p>
             {% endfor %}
+        </div>
+        <div class="x-profiles">
+            <h3>Learn More on X</h3>
+            <div class="profile-list">
+                {% for profile in x_profiles %}
+                <a href="{{ profile.link }}" target="_blank" class="profile-item">
+                    <img src="{{ profile.image }}" alt="{{ profile.name }} Profile">
+                    <span>{{ profile.name }}</span>
+                </a>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </body>

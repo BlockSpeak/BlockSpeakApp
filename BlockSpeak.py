@@ -45,24 +45,24 @@ def get_trending_crypto():
         response = requests.get(url).json()
         coins = response.get("coins", [])[:3]  # Top 3 trending
         trends = []
-        x_links = {
-            "bitcoin": "https://x.com/Bitcoin",
-            "ethereum": "https://x.com/ethereum",
-            "solana": "https://x.com/Solana"
-        }
         for coin in coins:
             item = coin["item"]
-            coin_id = item["id"].lower()
-            x_link = x_links.get(coin_id, "https://www.coingecko.com/en/coins/" + item["id"])
             trends.append({
                 "topic": item["name"],
                 "snippet": "Trending on CoinGecko - Rank " + str(item["market_cap_rank"]),
-                "link": x_link
+                "link": "https://www.coingecko.com/en/coins/" + item["id"]
             })
         return trends
     except Exception as e:
         app.logger.error("Trending fetch failed: " + str(e))
         return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
+
+def get_x_profiles():
+    return [
+        {"name": "Bitcoin", "link": "https://x.com/Bitcoin", "image": "https://pbs.twimg.com/profile_images/1818369981355171840/WGnaKq3N_400x400.jpg"},
+        {"name": "Ethereum", "link": "https://x.com/ethereum", "image": "https://pbs.twimg.com/profile_images/1694442176691351552/Jr_mJ2Mk_400x400.jpg"},
+        {"name": "Solana", "link": "https://x.com/Solana", "image": "https://pbs.twimg.com/profile_images/1818114199074267136/9HitQh8G_400x400.jpg"}
+    ]
 
 def get_news_items():
     feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -77,7 +77,7 @@ def get_news_items():
 def home():
     session["history"] = session.get("history", [])  # Init history if not set
     news_items = get_news_items()
-    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto())
+    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
 
 @app.route("/about")
 def about():
@@ -114,16 +114,16 @@ def query():
                 history.insert(0, {"question": user_question, "answer": answer})
                 session["history"] = history[:5]
                 news_items = get_news_items()
-                return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto())
+                return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
             else:
                 history = session.get("history", [])
                 news_items = get_news_items()
-                return render_template("index.html", answer="Oops! Invalid Bitcoin address or no data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+                return render_template("index.html", answer="Oops! Invalid Bitcoin address or no data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
         except Exception as e:
             app.logger.error("Bitcoin balance query failed: " + str(e))
             history = session.get("history", [])
             news_items = get_news_items()
-            return render_template("index.html", answer="Something went wrong with Bitcoin balance - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+            return render_template("index.html", answer="Something went wrong with Bitcoin balance - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif is_wallet_address(user_question):
         payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [user_question, "latest"], "id": 1}
         url = eth_url
@@ -146,15 +146,15 @@ def query():
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
         news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
-        answer = "Here is what is trending in crypto right now:\n" + "\n".join([t["topic"] + ": " + t["snippet"] + " (See more: " + t["link"] + ")" for t in trends])
+        answer = "Here is what is trending in crypto right now:\n" + "\n".join([t["topic"] + ": " + t["snippet"] + " (See Post Now: " + t["link"] + ")" for t in trends])
         history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
         news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=trends)
+        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=trends, x_profiles=get_x_profiles())
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         url = eth_url
@@ -168,7 +168,7 @@ def query():
         else:
             history = session.get("history", [])
             news_items = get_news_items()
-            return render_template("index.html", answer="Oops! Could not fetch block data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+            return render_template("index.html", answer="Oops! Could not fetch block data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -184,16 +184,16 @@ def query():
                 history.insert(0, {"question": user_question, "answer": answer})
                 session["history"] = history[:5]
                 news_items = get_news_items()
-                return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+                return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
             else:
                 history = session.get("history", [])
                 news_items = get_news_items()
-                return render_template("index.html", answer="Oops! Could not fetch Bitcoin data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+                return render_template("index.html", answer="Oops! Could not fetch Bitcoin data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
         except Exception as e:
             app.logger.error("Bitcoin block query failed: " + str(e))
             history = session.get("history", [])
             news_items = get_news_items()
-            return render_template("index.html", answer="Something went wrong with Bitcoin - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+            return render_template("index.html", answer="Something went wrong with Bitcoin - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         url = sol_url
@@ -229,7 +229,7 @@ def query():
             app.logger.error("No result in response: " + str(response))
             history = session.get("history", [])
             news_items = get_news_items()
-            return render_template("index.html", answer="Oops! Blockchain data unavailable - try again.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+            return render_template("index.html", answer="Oops! Blockchain data unavailable - try again.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
         ai_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}]
@@ -239,12 +239,12 @@ def query():
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
         news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
     except Exception as e:
         app.logger.error("Query failed: " + str(e))
         history = session.get("history", [])
         news_items = get_news_items()
-        return render_template("index.html", answer="Something went wrong - try again later!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto())
+        return render_template("index.html", answer="Something went wrong - try again later!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
