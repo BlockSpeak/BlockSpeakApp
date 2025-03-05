@@ -1,5 +1,6 @@
 import os
-from flask import Flask, request, render_template, session, Markup
+from flask import Flask, request, render_template, session
+from markupsafe import Markup
 import requests
 from openai import OpenAI
 import feedparser
