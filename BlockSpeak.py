@@ -4,7 +4,7 @@ from markupsafe import Markup
 import requests
 from openai import OpenAI
 import feedparser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone  # Updated import
 import logging
 
 app = Flask(__name__)
@@ -164,7 +164,7 @@ def get_wallet_analytics(address):
 
 def get_historical_balance(address, chain):
     balances = []
-    now = datetime.now()
+    now = datetime.now(timezone.utc)  # Updated to UTC-aware datetime
     thirty_days_ago = now - timedelta(days=30)
     if chain == "Bitcoin":
         url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/full?limit=50"
