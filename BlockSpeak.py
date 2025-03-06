@@ -331,7 +331,7 @@ def predict_price(coin, days):
     try:
         response = requests.get(url).json()
         if "prices" not in response:
-            return "Sorry, couldn’t fetch price data for prediction."
+            return "Sorry, couldn't fetch price data for prediction."
         prices = [p[1] for p in response["prices"]]
         # Simple moving average prediction (upgrade later with ML)
         avg_change = sum((prices[i] - prices[i-1]) for i in range(1, len(prices))) / (len(prices) - 1)
