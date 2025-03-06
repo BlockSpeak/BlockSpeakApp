@@ -40,7 +40,7 @@ def normalize_question(text):
     return text
 
 def get_crypto_price(coin):
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currency=usd"
     response = requests.get(url).json()
     return response.get(coin, {}).get("usd", "Price unavailable")
 
@@ -255,27 +255,38 @@ def get_top_coins():
     return coins
 
 def get_coin_graph(coin_id):
+    # Check if cached in session and not expired
+    cache_key = f"coin_graph_{coin_id}"
+    if cache_key in session:
+        cached = session[cache_key]
+        if cached["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=5):
+            return cached["data"]
+    
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=daily"
     try:
         response = requests.get(url).json()
         if "prices" not in response:
             app.logger.error(f"No 'prices' in CoinGecko response for {coin_id}: {response}")
-            # Fallback: return flat line if API fails
             now = datetime.now(timezone.utc)
             dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
-            prices = [0] * 7  # Flat line at 0
-            return {"dates": dates, "prices": prices}
-        prices = response["prices"]
-        dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
-        values = [p[1] for p in prices]
-        return {"dates": dates, "prices": values}
+            prices = [0] * 7
+        else:
+            prices = response["prices"]
+            dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
+            values = [p[1] for p in prices]
+            prices = values
+        graph_data = {"dates": dates, "prices": prices}
+        # Cache it
+        session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
+        return graph_data
     except Exception as e:
         app.logger.error(f"CoinGecko API failed for {coin_id}: {str(e)}")
-        # Fallback on exception
         now = datetime.now(timezone.utc)
         dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
         prices = [0] * 7
-        return {"dates": dates, "prices": prices}
+        graph_data = {"dates": dates, "prices": prices}
+        session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
+        return graph_data
 
 @app.route("/graph_data/<address>/<chain>")
 def graph_data(address, chain):
