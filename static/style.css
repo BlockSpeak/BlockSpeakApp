@@ -1,13 +1,13 @@
 body {
     font-family: 'Arial', sans-serif;
-    background: #f5f6fa;
     margin: 0;
     padding: 0;
-    color: #2c3e50;
+    background-color: #1a1a1a; /* Dark base for crypto vibe */
+    color: #ffffff; /* White text for contrast */
 }
 
 .container {
-    max-width: 1000px;
+    max-width: 1000px; /* Tighter than 1200px for focus */
     margin: 0 auto;
     padding: 20px;
 }
@@ -17,26 +17,103 @@ header {
     justify-content: space-between;
     align-items: center;
     padding: 20px 0;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #3a3a3a; /* Darker border */
 }
 
 h1 {
     font-size: 28px;
-    color: #3498db;
+    color: #00cc99; /* Green brand pop */
     margin: 0;
 }
 
-nav a {
-    margin-left: 20px;
-    color: #3498db;
-    text-decoration: none;
-    font-weight: bold;
+nav {
+    margin-top: 10px;
 }
 
-    nav a:hover {
-        color: #2980b9;
+    nav a {
+        margin-left: 20px;
+        color: #00cc99;
+        text-decoration: none;
+        font-weight: bold;
     }
 
+        nav a:hover {
+            color: #009977; /* Darker green hover */
+        }
+
+/* Login/Register Styles */
+.auth-container {
+    max-width: 400px;
+    margin: 50px auto;
+    background-color: #2a2a2a; /* Dark box */
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+    .auth-container h2 {
+        text-align: center;
+        color: #00cc99;
+        margin-bottom: 20px;
+        font-size: 1.8em;
+    }
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+}
+
+    .auth-form input {
+        margin-bottom: 15px;
+        padding: 12px;
+        border: none;
+        border-radius: 5px;
+        background-color: #3a3a3a; /* Input bg */
+        color: #ffffff;
+        font-size: 1em;
+    }
+
+        .auth-form input:focus {
+            outline: none;
+            box-shadow: 0 0 5px #00cc99; /* Green glow */
+        }
+
+    .auth-form button {
+        padding: 12px;
+        background-color: #00cc99;
+        color: #1a1a1a;
+        border: none;
+        border-radius: 5px;
+        font-size: 1.1em;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+        .auth-form button:hover {
+            background-color: #009977;
+        }
+
+.auth-error {
+    color: #ff5555; /* Red error */
+    text-align: center;
+    margin-top: 10px;
+}
+
+.auth-link {
+    text-align: center;
+    margin-top: 15px;
+}
+
+    .auth-link a {
+        color: #00cc99;
+        text-decoration: none;
+    }
+
+        .auth-link a:hover {
+            text-decoration: underline;
+        }
+
+/* Index Page Styles */
 .hero {
     text-align: center;
     padding: 40px 0;
@@ -45,6 +122,7 @@ nav a {
     .hero p {
         font-size: 18px;
         margin-bottom: 20px;
+        color: #cccccc; /* Softer white */
     }
 
 .query-form {
@@ -56,15 +134,22 @@ nav a {
     .query-form input[type="text"] {
         width: 60%;
         padding: 12px;
-        border: 1px solid #ddd;
+        border: none;
         border-radius: 25px;
+        background-color: #3a3a3a;
+        color: #ffffff;
         font-size: 16px;
     }
 
+        .query-form input[type="text"]:focus {
+            outline: none;
+            box-shadow: 0 0 5px #00cc99;
+        }
+
     .query-form button {
         padding: 12px 30px;
-        background: #3498db;
-        color: white;
+        background: #00cc99;
+        color: #1a1a1a;
         border: none;
         border-radius: 25px;
         cursor: pointer;
@@ -73,20 +158,20 @@ nav a {
     }
 
         .query-form button:hover {
-            background: #2980b9;
+            background: #009977;
         }
 
 .answer-card, .history-card, .trends-card, .news-card {
-    background: white;
+    background: #2a2a2a; /* Dark cards */
     padding: 20px;
     margin: 20px 0;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
 h2 {
     font-size: 22px;
-    color: #3498db;
+    color: #00cc99; /* Green headers */
     margin-top: 0;
 }
 
@@ -102,7 +187,7 @@ h2 {
 
 .history-item, .trend-item, .news-item {
     padding: 10px 0;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid #3a3a3a;
 }
 
     .history-item:last-child, .trend-item:last-child, .news-item:last-child {
@@ -110,7 +195,7 @@ h2 {
     }
 
     .trend-item a, .news-item a {
-        color: #3498db;
+        color: #00cc99;
         text-decoration: none;
     }
 
@@ -121,7 +206,7 @@ h2 {
 footer {
     text-align: center;
     padding: 20px 0;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid #3a3a3a;
 }
 
 .x-profiles {
@@ -132,7 +217,7 @@ footer {
 }
 
 .profile-item {
-    color: #3498db;
+    color: #00cc99;
     text-decoration: none;
     font-size: 16px;
     padding: 5px 15px;
@@ -141,15 +226,15 @@ footer {
 }
 
     .profile-item:hover {
-        background: #3498db;
-        color: white;
+        background: #00cc99;
+        color: #1a1a1a;
     }
 
 #analytics {
     padding: 15px;
-    background: #fff;
+    background: #2a2a2a;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
 #balanceChart {
@@ -163,9 +248,9 @@ footer {
 
 .content {
     padding: 20px;
-    background: white;
+    background: #2a2a2a;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
     margin: 20px 0;
 }
 
@@ -175,20 +260,20 @@ footer {
     }
 
 .logo {
-    color: #3498db;
+    color: #00cc99;
     text-decoration: none;
 }
 
     .logo:hover {
-        color: #2980b9;
+        color: #009977;
     }
 
 .coin-table {
-    background: white;
+    background: #2a2a2a;
     padding: 20px;
     margin: 20px 0;
     border-radius: 10px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 }
 
     .coin-table table {
@@ -202,13 +287,13 @@ footer {
     }
 
     .coin-table th {
-        background: #f5f6fa;
-        color: #2c3e50;
+        background: #3a3a3a;
+        color: #ffffff;
         font-weight: bold;
     }
 
     .coin-table td {
-        border-bottom: 1px solid #e0e0e0;
+        border-bottom: 1px solid #3a3a3a;
     }
 
     .coin-table img {
