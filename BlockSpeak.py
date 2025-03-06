@@ -387,7 +387,7 @@ def login():
                 users[user_id].stripe_customer_id = customer["id"]
             except stripe.error.StripeError as e:
                 app.logger.error(f"Stripe customer creation failed: {str(e)}")
-                return render_template("login.html", error="Login failed—try again later.")
+                return render_template("login.html", error="Login failed - try again later.")
         login_user(users[user_id])
         return redirect(url_for("home"))
     return render_template("login.html", error=None)
