@@ -1,13 +1,17 @@
 import os
-from flask import Flask, request, render_template, session
+from flask import Flask, request, render_template, session, jsonify
 from markupsafe import Markup
 import requests
 from openai import OpenAI
 import feedparser
+from datetime import datetime, timedelta, timezone
+import logging
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 app.config["SESSION_TYPE"] = "filesystem"
+
+logging.basicConfig(level=logging.INFO)
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -98,20 +102,16 @@ def get_wallet_analytics(address):
     elif is_wallet_address(address):
         try:
             eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-            # Balance
             payload = {"jsonrpc": "2.0", "method": "eth_getBalance", "params": [address, "latest"], "id": 1}
             balance_response = requests.post(eth_url, json=payload).json()
             balance_wei = int(balance_response["result"], 16)
             balance_eth = balance_wei / 1e18
-            # Tx Count
             payload = {"jsonrpc": "2.0", "method": "eth_getTransactionCount", "params": [address, "latest"], "id": 1}
             tx_response = requests.post(eth_url, json=payload).json()
             tx_count = int(tx_response["result"], 16)
-            # Gas Spent (placeholder)
             gas_spent_wei = 0
             eth_price = get_crypto_price("ethereum")
             gas_spent_usd = "N/A" if eth_price == "Price unavailable" else f"${(gas_spent_wei / 1e18 * float(eth_price)):.2f}"
-            # Top Tokens (basic ERC-20 check - USDT as example)
             usdt_contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
             payload = {"jsonrpc": "2.0", "method": "eth_call", "params": [{"to": usdt_contract, "data": f"0x70a08231000000000000000000000000{address[2:]}"}, "latest"], "id": 1}
             token_response = requests.post(eth_url, json=payload).json()
@@ -161,6 +161,88 @@ def get_wallet_analytics(address):
         return {"error": "Invalid wallet address"}
     return analytics
 
+def get_historical_balance(address, chain):
+    balances = []
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = now - timedelta(days=30)
+    if chain == "Bitcoin":
+        url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/full?limit=50"
+        response = requests.get(url).json()
+        txs = response.get("txs", [])
+        balance = response.get("balance", 0) / 1e8
+        daily_balances = {}
+        sorted_txs = sorted(
+            [tx for tx in txs if "received" in tx],
+            key=lambda x: datetime.fromisoformat(x["received"].replace("Z", "+00:00"))
+        )
+        for tx in sorted_txs:
+            try:
+                timestamp = datetime.fromisoformat(tx["received"].replace("Z", "+00:00"))
+                if timestamp < thirty_days_ago:
+                    continue
+                day = timestamp.strftime("%Y-%m-%d")
+                if tx["inputs"][0]["addresses"][0] == address:
+                    balance -= sum(output["value"] for output in tx["outputs"]) / 1e8
+                else:
+                    balance += tx["total"] / 1e8
+                daily_balances[day] = balance
+            except ValueError as e:
+                app.logger.error(f"Invalid timestamp format in tx: {tx}, error: {e}")
+                continue
+        for day in [thirty_days_ago + timedelta(days=x) for x in range(31)]:
+            day_str = day.strftime("%Y-%m-%d")
+            balances.append({"date": day_str, "balance": daily_balances.get(day_str, balance)})
+    elif chain == "Ethereum":
+        eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "alchemy_getAssetTransfers",
+            "params": [{"fromAddress": address, "toAddress": address, "maxCount": "0x3e8"}],
+            "id": 1
+        }
+        response = requests.post(eth_url, json=payload).json()
+        transfers = response.get("result", {}).get("transfers", [])
+        balance = float(get_wallet_analytics(address)["balance"].split()[0])
+        daily_balances = {}
+        for transfer in sorted(transfers, key=lambda x: int(x["blockNum"], 16)):
+            timestamp = datetime.fromtimestamp(int(transfer["blockNum"], 16))
+            if timestamp < thirty_days_ago:
+                continue
+            day = timestamp.strftime("%Y-%m-%d")
+            value = float(transfer["value"]) if transfer["asset"] == "ETH" else 0
+            if transfer["from"].lower() == address.lower():
+                balance -= value
+            else:
+                balance += value
+            daily_balances[day] = balance
+        for day in [thirty_days_ago + timedelta(days=x) for x in range(31)]:
+            day_str = day.strftime("%Y-%m-%d")
+            balances.append({"date": day_str, "balance": daily_balances.get(day_str, balance)})
+    elif chain == "Solana":
+        sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+        payload = {"jsonrpc": "2.0", "method": "getSignaturesForAddress", "params": [address, {"limit": 100}], "id": 1}
+        response = requests.post(sol_url, json=payload).json()
+        signatures = response.get("result", [])
+        balance = float(get_wallet_analytics(address)["balance"].split()[0])
+        daily_balances = {}
+        for sig in sorted(signatures, key=lambda x: x["blockTime"]):
+            timestamp = datetime.fromtimestamp(sig["blockTime"])
+            if timestamp < thirty_days_ago:
+                continue
+            day = timestamp.strftime("%Y-%m-%d")
+            balance_change = 0.001  # Placeholder
+            balance -= balance_change
+            daily_balances[day] = balance
+        for day in [thirty_days_ago + timedelta(days=x) for x in range(31)]:
+            day_str = day.strftime("%Y-%m-%d")
+            balances.append({"date": day_str, "balance": daily_balances.get(day_str, balance)})
+    return balances
+
+@app.route("/graph_data/<address>/<chain>")
+def graph_data(address, chain):
+    balances = get_historical_balance(address, chain)
+    return jsonify(balances)
+
 @app.route("/")
 def home():
     session["history"] = session.get("history", [])
@@ -189,119 +271,68 @@ def query():
         if "error" in analytics:
             answer = analytics["error"]
         else:
-            answer = Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}")
+            chain = analytics["chain"]
+            address = user_question
+            answer = Markup(f"""
+            <div id="analytics">
+                <h3>Wallet Analytics ({chain})</h3>
+                <p>Balance: {analytics['balance']}</p>
+                <p>Transactions (30 days): {analytics['tx_count']}</p>
+                <p>Gas Spent: {analytics['gas_spent']}</p>
+                <p>Top Tokens: {analytics['top_tokens']}</p>
+                <p>Hot Wallet: {analytics['hot_wallet']}</p>
+                <canvas id="balanceChart" width="400" height="200"></canvas>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                <script>
+                    fetch('/graph_data/{address}/{chain}')
+                        .then(response => response.json())
+                        .then(data => {{
+                            const ctx = document.getElementById('balanceChart').getContext('2d');
+                            const chainColors = {{
+                                'Bitcoin': '#f7931a',
+                                'Ethereum': '#3498db',
+                                'Solana': '#9945ff'
+                            }};
+                            new Chart(ctx, {{
+                                type: 'line',
+                                data: {{
+                                    labels: data.map(d => d.date),
+                                    datasets: [{{
+                                        label: 'Balance History',
+                                        data: data.map(d => d.balance),
+                                        borderColor: chainColors['{chain}'],
+                                        tension: 0.1,
+                                        fill: false
+                                    }}]
+                                }},
+                                options: {{
+                                    scales: {{ y: {{ beginAtZero: true }} }},
+                                    plugins: {{ tooltip: {{ mode: 'index', intersect: false }} }}
+                                }}
+                            }});
+                        }});
+                </script>
+            </div>
+            """)
         history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer})
         session["history"] = history[:5]
         news_items = get_news_items()
         return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    elif "price" in normalized_question:
-        if "bitcoin" in normalized_question:
-            price = get_crypto_price("bitcoin")
-            answer = f"The current Bitcoin price is ${price} USD."
-        elif "ethereum" in normalized_question:
-            price = get_crypto_price("ethereum")
-            answer = f"The current Ethereum price is ${price} USD."
-        elif "solana" in normalized_question:
-            price = get_crypto_price("solana")
-            answer = f"The current Solana price is ${price} USD."
-        else:
-            answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
-        history = session.get("history", [])
-        history.insert(0, {"question": user_question, "answer": answer})
-        session["history"] = history[:5]
-        news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    elif "trending" in normalized_question or "buzz" in normalized_question:
-        trends = get_trending_crypto()
-        answer = Markup("Here is what is trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
-        history = session.get("history", [])
-        history.insert(0, {"question": user_question, "answer": answer})
-        session["history"] = history[:5]
-        news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=trends, x_profiles=get_x_profiles())
-    elif "gas" in normalized_question:
-        payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
-        url = eth_url
-    elif "transactions" in normalized_question or "many" in normalized_question:
-        block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
-        block_response = requests.post(eth_url, json=block_payload).json()
-        if "result" in block_response:
-            latest_block = block_response["result"]
-            payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
-            url = eth_url
-        else:
-            history = session.get("history", [])
-            news_items = get_news_items()
-            return render_template("index.html", answer="Oops! Could not fetch block data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    elif "bitcoin block" in normalized_question:
-        try:
-            btc_response = requests.get("https://blockchain.info/latestblock").json()
-            if "height" in btc_response:
-                block_number = btc_response["height"]
-                prompt = f"User asked: {user_question}. Latest Bitcoin block number is {block_number}. Answer simply."
-                ai_response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                answer = ai_response.choices[0].message.content
-                history = session.get("history", [])
-                history.insert(0, {"question": user_question, "answer": answer})
-                session["history"] = history[:5]
-                news_items = get_news_items()
-                return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-            else:
-                history = session.get("history", [])
-                news_items = get_news_items()
-                return render_template("index.html", answer="Oops! Could not fetch Bitcoin data.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-        except Exception as e:
-            app.logger.error(f"Bitcoin block query failed: {str(e)}")
-            history = session.get("history", [])
-            news_items = get_news_items()
-            return render_template("index.html", answer="Something went wrong with Bitcoin - try again!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    elif "solana block" in normalized_question:
-        payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
-        url = sol_url
-    else:
-        payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
-        url = eth_url
-    
     try:
-        response = requests.post(url, json=payload).json()
-        app.logger.info(f"Alchemy Response: {str(response)}")
-        if "result" in response:
-            if "gas" in normalized_question:
-                gas_price = int(response["result"], 16) / 1e9
-                prompt = f"User asked: {user_question}. Current Ethereum gas price is {gas_price} Gwei. Answer simply."
-            elif "transactions" in normalized_question or "many" in normalized_question:
-                tx_count = len(response["result"]["transactions"])
-                prompt = f"User asked: {user_question}. The latest Ethereum block has {tx_count} transactions. Answer simply."
-            elif "solana block" in normalized_question:
-                slot_number = response["result"]
-                prompt = f"User asked: {user_question}. Latest Solana slot number is {slot_number}. Answer simply."
-            else:
-                block_number = int(response["result"], 16)
-                prompt = f"User asked: {user_question}. Latest Ethereum block number is {block_number}. Answer simply."
-        else:
-            app.logger.error(f"No result in response: {str(response)}")
-            history = session.get("history", [])
-            news_items = get_news_items()
-            return render_template("index.html", answer="Oops! Blockchain data unavailable - try again.", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-        ai_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
+            max_tokens=100
         )
-        answer = ai_response.choices[0].message.content
-        history = session.get("history", [])
-        history.insert(0, {"question": user_question, "answer": answer})
-        session["history"] = history[:5]
-        news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
+        answer = response.choices[0].message.content
     except Exception as e:
-        app.logger.error(f"Query failed: {str(e)}")
-        history = session.get("history", [])
-        news_items = get_news_items()
-        return render_template("index.html", answer="Something went wrong - try again later!", question=user_question, history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
+        answer = f"Sorry, I had trouble answering that: {str(e)}"
+    history = session.get("history", [])
+    history.insert(0, {"question": user_question, "answer": answer})
+    session["history"] = history[:5]
+    news_items = get_news_items()
+    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
