@@ -144,3 +144,19 @@ footer {
         background: #3498db;
         color: white;
     }
+
+#analytics {
+    padding: 15px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#balanceChart {
+    margin-top: 20px;
+}
+
+.answer-card {
+    max-width: 600px;
+    margin: 20px auto;
+}

@@ -319,15 +319,81 @@ def query():
         session["history"] = history[:5]
         news_items = get_news_items()
         return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
-            max_tokens=100
-        )
-        answer = response.choices[0].message.content
-    except Exception as e:
-        answer = f"Sorry, I had trouble answering that: {str(e)}"
+    elif "price" in normalized_question:
+        if "bitcoin" in normalized_question:
+            price = get_crypto_price("bitcoin")
+            answer = f"The current Bitcoin price is ${price} USD."
+        elif "ethereum" in normalized_question:
+            price = get_crypto_price("ethereum")
+            answer = f"The current Ethereum price is ${price} USD."
+        elif "solana" in normalized_question:
+            price = get_crypto_price("solana")
+            answer = f"The current Solana price is ${price} USD."
+        else:
+            answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
+    elif "trending" in normalized_question or "buzz" in normalized_question:
+        trends = get_trending_crypto()
+        answer = Markup("Here is what's trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
+    elif "gas" in normalized_question:
+        payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
+        response = requests.post(eth_url, json=payload).json()
+        if "result" in response:
+            gas_price = int(response["result"], 16) / 1e9
+            answer = f"The current Ethereum gas price is {gas_price} Gwei."
+        else:
+            answer = "Oops! Could not fetch gas price."
+    elif "transactions" in normalized_question or "many" in normalized_question:
+        block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        block_response = requests.post(eth_url, json=block_payload).json()
+        if "result" in block_response:
+            latest_block = block_response["result"]
+            payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
+            block_data = requests.post(eth_url, json=payload).json()
+            if "result" in block_data and "transactions" in block_data["result"]:
+                tx_count = len(block_data["result"]["transactions"])
+                answer = f"The latest Ethereum block has {tx_count} transactions."
+            else:
+                answer = "Oops! Could not fetch transaction data."
+        else:
+            answer = "Oops! Could not fetch block data."
+    elif "ethereum block" in normalized_question:
+        payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        response = requests.post(eth_url, json=payload).json()
+        if "result" in response:
+            block_number = int(response["result"], 16)
+            answer = f"The latest Ethereum block number is {block_number}."
+        else:
+            answer = "Oops! Could not fetch Ethereum block data."
+    elif "bitcoin block" in normalized_question:
+        try:
+            btc_response = requests.get("https://blockchain.info/latestblock").json()
+            if "height" in btc_response:
+                block_number = btc_response["height"]
+                answer = f"The latest Bitcoin block number is {block_number}."
+            else:
+                answer = "Oops! Could not fetch Bitcoin data."
+        except Exception as e:
+            app.logger.error(f"Bitcoin block query failed: {str(e)}")
+            answer = "Something went wrong with Bitcoin - try again!"
+    elif "solana block" in normalized_question:
+        payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
+        response = requests.post(sol_url, json=payload).json()
+        if "result" in response:
+            slot_number = response["result"]
+            answer = f"The latest Solana slot number is {slot_number}."
+        else:
+            answer = "Oops! Could not fetch Solana slot data."
+    else:
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
+                max_tokens=100
+            )
+            answer = response.choices[0].message.content
+        except Exception as e:
+            answer = f"Sorry, I had trouble answering that: {str(e)}"
+
     history = session.get("history", [])
     history.insert(0, {"question": user_question, "answer": answer})
     session["history"] = history[:5]
