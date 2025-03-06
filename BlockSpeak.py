@@ -251,13 +251,11 @@ def home():
 
 @app.route("/about")
 def about():
-    session["history"] = session.get("history", [])
-    return render_template("about.html", history=session["history"])
+    return render_template("about.html")
 
 @app.route("/how-it-works")
 def how_it_works():
-    session["history"] = session.get("history", [])
-    return render_template("how_it_works.html", history=session["history"])
+    return render_template("how_it_works.html")
 
 @app.route("/query", methods=["POST"])
 def query():
