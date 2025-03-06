@@ -294,7 +294,7 @@ def get_historical_balance(address, chain):
     return balances
 
 def get_top_coins():
-    # #TopCoins - Fetch top 4 coins by market cap from CoinCap
+    # #TopCoins - Fetch Bitcoin, Ethereum, Solana, and one random coin from CoinCap
     cache_file = "top_coins_cache.json"
     now = datetime.now(timezone.utc)
     if os.path.exists(cache_file):
@@ -302,20 +302,44 @@ def get_top_coins():
             cached = json.load(f)
         if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
             return cached["data"]
-    url = "https://api.coincap.io/v2/assets?limit=4"
+    
+    # Hardcode our core coins
+    coin_ids = ["bitcoin", "ethereum", "solana"]
+    coins = []
+    url = "https://api.coincap.io/v2/assets"
     try:
+        # Fetch all assets to filter our trio and grab a random extra
         response = requests.get(url).json()
-        coins = []
-        for coin in response["data"]:
+        all_coins = response["data"]
+        
+        # Get Bitcoin, Ethereum, Solana
+        for coin_id in coin_ids:
+            coin_data = next((c for c in all_coins if c["id"] == coin_id), None)
+            if coin_data:
+                coins.append({
+                    "id": coin_data["id"],
+                    "name": coin_data["name"],
+                    "image": f"https://assets.coincap.io/assets/icons/{coin_data['symbol'].lower()}@2x.png",
+                    "price": f"{float(coin_data['priceUsd']):.2f}",
+                    "market_cap": f"{int(float(coin_data['marketCapUsd'])):,}",
+                    "change": round(float(coin_data["changePercent24Hr"]), 2),
+                    "graph_color": "#2ecc71" if float(coin_data["changePercent24Hr"]) > 0 else "#e74c3c"
+                })
+        
+        # Grab one random coin (not in our trio) from top 10
+        other_coins = [c for c in all_coins[:10] if c["id"] not in coin_ids]
+        if other_coins:
+            random_coin = other_coins[0]  # First non-trio coin for simplicity
             coins.append({
-                "id": coin["id"],
-                "name": coin["name"],
-                "image": f"https://assets.coincap.io/assets/icons/{coin['symbol'].lower()}@2x.png",  # CoinCap doesn't provide images, use their icon CDN
-                "price": f"{float(coin['priceUsd']):.2f}",
-                "market_cap": f"{int(float(coin['marketCapUsd'])):,}",
-                "change": round(float(coin["changePercent24Hr"]), 2),
-                "graph_color": "#2ecc71" if float(coin["changePercent24Hr"]) > 0 else "#e74c3c"
+                "id": random_coin["id"],
+                "name": random_coin["name"],
+                "image": f"https://assets.coincap.io/assets/icons/{random_coin['symbol'].lower()}@2x.png",
+                "price": f"{float(random_coin['priceUsd']):.2f}",
+                "market_cap": f"{int(float(random_coin['marketCapUsd'])):,}",
+                "change": round(float(random_coin["changePercent24Hr"]), 2),
+                "graph_color": "#2ecc71" if float(random_coin["changePercent24Hr"]) > 0 else "#e74c3c"
             })
+        
         with open(cache_file, "w") as f:
             json.dump({"data": coins, "timestamp": now.isoformat()}, f)
         return coins
@@ -324,8 +348,8 @@ def get_top_coins():
         fallback = [
             {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coincap.io/assets/icons/btc@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
             {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coincap.io/assets/icons/eth@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
-            {"id": "tether", "name": "Tether", "image": "https://assets.coincap.io/assets/icons/usdt@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
-            {"id": "binance-coin", "name": "BNB", "image": "https://assets.coincap.io/assets/icons/bnb@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"}
+            {"id": "solana", "name": "Solana", "image": "https://assets.coincap.io/assets/icons/sol@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
+            {"id": "tether", "name": "Tether", "image": "https://assets.coincap.io/assets/icons/usdt@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"}
         ]
         with open(cache_file, "w") as f:
             json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
