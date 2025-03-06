@@ -239,23 +239,39 @@ def get_historical_balance(address, chain):
     return balances
 
 def get_top_coins():
-    url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=true"
-    response = requests.get(url).json()
-    coins = []
-    for coin in response:
-        coins.append({
-            "id": coin["id"],
-            "name": coin["name"],
-            "image": coin["image"],
-            "price": f"{coin['current_price']:.2f}",
-            "market_cap": f"{coin['market_cap']:,}",
-            "change": round(coin["price_change_percentage_24h"], 2),
-            "sparkline": coin["sparkline_in_7d"]["price"]
-        })
-    return coins
+    url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=4&page=1&sparkline=true"
+    try:
+        response = requests.get(url).json()
+        if not isinstance(response, list):
+            app.logger.error(f"CoinGecko response not a list: {response}")
+            return [
+                {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+                {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+                {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+                {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
+            ]
+        coins = []
+        for coin in response[:4]:  # Limit to 4 coins
+            coins.append({
+                "id": coin["id"],
+                "name": coin["name"],
+                "image": coin["image"],
+                "price": f"{coin['current_price']:.2f}",
+                "market_cap": f"{coin['market_cap']:,}",
+                "change": round(coin["price_change_percentage_24h"], 2),
+                "sparkline": coin["sparkline_in_7d"]["price"]
+            })
+        return coins
+    except Exception as e:
+        app.logger.error(f"CoinGecko top coins failed: {str(e)}")
+        return [
+            {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+            {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+            {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
+            {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
+        ]
 
 def get_coin_graph(coin_id):
-    # Check if cached in session and not expired
     cache_key = f"coin_graph_{coin_id}"
     if cache_key in session:
         cached = session[cache_key]
@@ -276,7 +292,6 @@ def get_coin_graph(coin_id):
             values = [p[1] for p in prices]
             prices = values
         graph_data = {"dates": dates, "prices": prices}
-        # Cache it
         session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
         return graph_data
     except Exception as e:
