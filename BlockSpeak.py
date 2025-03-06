@@ -20,6 +20,14 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 def home():
     return render_template("index.html", message="Welcome to BlockSpeak!")
 
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+@app.route("/how-it-works")
+def how_it_works():
+    return render_template("how_it_works.html")
+
 @app.route("/query", methods=["POST"])
 def query():
     user_question = request.form["question"].strip()
