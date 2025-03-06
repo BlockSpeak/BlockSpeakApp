@@ -2,3 +2,5 @@ flask
 requests
 openai
 feedparser
+markupsafe
+gunicorn  # Add this for production
