@@ -327,4 +327,5 @@ def query():
     return render_template("index.html", answer="Sorry, I can only analyze wallet addresses right now!", question=user_question, history=session["history"])
 
 if __name__ == "__main__":
+    # For local testing only
     app.run(host="0.0.0.0", port=8080, debug=True)

@@ -3,4 +3,5 @@ requests
 openai
 feedparser
 markupsafe
-gunicorn  # Add this for production
+python-dotenv
+gunicorn
