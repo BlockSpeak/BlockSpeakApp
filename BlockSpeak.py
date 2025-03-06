@@ -1,11 +1,13 @@
 import os
-from flask import Flask, request, render_template, session, jsonify
+from flask import Flask, request, render_template, session, jsonify, redirect, url_for
 from markupsafe import Markup
 import requests
 from openai import OpenAI
 import feedparser
 from datetime import datetime, timedelta, timezone
 import logging
+import stripe
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -15,8 +17,27 @@ logging.basicConfig(level=logging.INFO)
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
 
+stripe.api_key = STRIPE_SECRET_KEY
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+        self.subscription = "free"  # Default to free tier
+
+users = {}  # Simple in-memory user store (replace with DB later)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User(user_id) if user_id in users else None
 
 def is_bitcoin_address(text):
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
@@ -37,10 +58,12 @@ def normalize_question(text):
         return "bitcoin block" if "block" in text else "bitcoin price"
     elif "eth" in text or "ethereum" in text:
         return "ethereum block" if "block" in text else "ethereum price"
+    elif "predict" in text or "price in" in text:
+        return "price_prediction"
     return text
 
 def get_crypto_price(coin):
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currency=usd"
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
     response = requests.get(url).json()
     return response.get(coin, {}).get("usd", "Price unavailable")
 
@@ -251,7 +274,7 @@ def get_top_coins():
                 {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
             ]
         coins = []
-        for coin in response[:4]:  # Limit to 4 coins
+        for coin in response[:4]:
             coins.append({
                 "id": coin["id"],
                 "name": coin["name"],
@@ -303,6 +326,22 @@ def get_coin_graph(coin_id):
         session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
         return graph_data
 
+def predict_price(coin, days):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin}/market_chart?vs_currency=usd&days=30&interval=daily"
+    try:
+        response = requests.get(url).json()
+        if "prices" not in response:
+            return "Sorry, couldn’t fetch price data for prediction."
+        prices = [p[1] for p in response["prices"]]
+        # Simple moving average prediction (upgrade later with ML)
+        avg_change = sum((prices[i] - prices[i-1]) for i in range(1, len(prices))) / (len(prices) - 1)
+        current_price = prices[-1]
+        predicted = current_price + (avg_change * days)
+        return f"Predicted {coin.capitalize()} price in {days} days: ${predicted:.2f} (based on 30-day trend)."
+    except Exception as e:
+        app.logger.error(f"Price prediction failed for {coin}: {str(e)}")
+        return "Sorry, prediction unavailable right now."
+
 @app.route("/graph_data/<address>/<chain>")
 def graph_data(address, chain):
     balances = get_historical_balance(address, chain)
@@ -313,12 +352,49 @@ def coin_graph(coin_id):
     graph_data = get_coin_graph(coin_id)
     return jsonify(graph_data)
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user_id = request.form["user_id"]
+        if user_id not in users:
+            users[user_id] = User(user_id)
+        login_user(users[user_id])
+        return redirect(url_for("home"))
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("home"))
+
+@app.route("/subscribe", methods=["POST"])
+@login_required
+def subscribe():
+    plan = request.form["plan"]
+    if plan == "basic":
+        price_id = "price_1QzXTCKv6dFcpMYlxS712fan"  # Basic $10/mo
+    elif plan == "pro":
+        price_id = "price_1QzXY5Kv6dFcpMYluAWw5638"  # Pro $50/mo
+    else:
+        return "Invalid plan", 400
+    
+    checkout_session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{"price": price_id, "quantity": 1}],
+        mode="subscription",
+        success_url=url_for("home", _external=True),
+        cancel_url=url_for("home", _external=True),
+    )
+    current_user.subscription = plan
+    return redirect(checkout_session.url)
+
 @app.route("/")
 def home():
     session["history"] = session.get("history", [])
     news_items = get_news_items()
     top_coins = get_top_coins()
-    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
+    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY)
 
 @app.route("/about")
 def about():
@@ -329,6 +405,7 @@ def how_it_works():
     return render_template("how_it_works.html")
 
 @app.route("/query", methods=["POST"])
+@login_required
 def query():
     user_question = request.form["question"].strip()
     normalized_question = normalize_question(user_question)
@@ -388,9 +465,6 @@ def query():
         history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
         session["history"] = history[:5]
-        news_items = get_news_items()
-        top_coins = get_top_coins()
-        return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
     elif "price" in normalized_question:
         if "bitcoin" in normalized_question:
             price = get_crypto_price("bitcoin")
@@ -403,9 +477,15 @@ def query():
             answer = f"The current Solana price is ${price} USD."
         else:
             answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
         answer = Markup("Here is what's trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -414,6 +494,9 @@ def query():
             answer = f"The current Ethereum gas price is {gas_price} Gwei."
         else:
             answer = "Oops! Could not fetch gas price."
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "transactions" in normalized_question or "many" in normalized_question:
         block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         block_response = requests.post(eth_url, json=block_payload).json()
@@ -428,6 +511,9 @@ def query():
                 answer = "Oops! Could not fetch transaction data."
         else:
             answer = "Oops! Could not fetch block data."
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "ethereum block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -436,6 +522,9 @@ def query():
             answer = f"The latest Ethereum block number is {block_number}."
         else:
             answer = "Oops! Could not fetch Ethereum block data."
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -447,6 +536,9 @@ def query():
         except Exception as e:
             app.logger.error(f"Bitcoin block query failed: {str(e)}")
             answer = "Something went wrong with Bitcoin - try again!"
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         response = requests.post(sol_url, json=payload).json()
@@ -455,6 +547,27 @@ def query():
             answer = f"The latest Solana slot number is {slot_number}."
         else:
             answer = "Oops! Could not fetch Solana slot data."
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
+    elif "price_prediction" in normalized_question:
+        if "bitcoin" in user_question:
+            coin = "bitcoin"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        elif "ethereum" in user_question:
+            coin = "ethereum"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        elif "solana" in user_question:
+            coin = "solana"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        else:
+            answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
     else:
         try:
             response = client.chat.completions.create(
@@ -465,13 +578,13 @@ def query():
             answer = response.choices[0].message.content
         except Exception as e:
             answer = f"Sorry, I had trouble answering that: {str(e)}"
+        history = session.get("history", [])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+        session["history"] = history[:5]
 
-    history = session.get("history", [])
-    history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    session["history"] = history[:5]
     news_items = get_news_items()
     top_coins = get_top_coins()
-    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
+    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)

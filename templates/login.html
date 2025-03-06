@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - BlockSpeak Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="{{ url_for('home') }}" class="logo">BlockSpeak Pro</a></h1>
+        </header>
+        <section class="content">
+            <h2>Login</h2>
+            <form method="POST">
+                <input type="text" name="user_id" placeholder="Enter a user ID" required>
+                <button type="submit">Login</button>
+            </form>
+        </section>
+    </div>
+</body>
+</html>

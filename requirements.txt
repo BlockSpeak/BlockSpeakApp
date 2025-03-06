@@ -1,6 +1,8 @@
 flask
 requests
 openai
-feedparser
 markupsafe
 gunicorn
+feedparser
+stripe
+flask-login
