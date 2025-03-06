@@ -377,10 +377,9 @@ def coin_graph(coin_id):
 def login():
     if request.method == "POST":
         user_id = request.form["user_id"]
-        if not "@" in user_id or not "." in user_id:  # Basic email check
+        if not "@" in user_id or not "." in user_id:
             return render_template("login.html", error="Please enter a valid email.")
         if user_id not in users:
-            # Create a new Stripe customer
             try:
                 customer = stripe.Customer.create(email=user_id)
                 users[user_id] = User(user_id)
@@ -403,12 +402,11 @@ def logout():
 def subscribe():
     plan = request.form["plan"]
     if plan == "basic":
-        price_id = "price_1QzXTCKv6dFcpMYlxS712fan"  # Your Basic $10/mo
+        price_id = "price_1QzXTCKv6dFcpMYlxS712fan"
     elif plan == "pro":
-        price_id = "price_1QzXY5Kv6dFcpMYluAWw5638"  # Your Pro $50/mo
+        price_id = "price_1QzXY5Kv6dFcpMYluAWw5638"
     else:
         return "Invalid plan", 400
-    
     try:
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -421,7 +419,7 @@ def subscribe():
         current_user.subscription = plan
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe checkout failed: {str(e)}")
-        return "Subscription failed—try again later.", 500
+        return "Subscription failed - try again later.", 500
     return redirect(checkout_session.url)
 
 @app.route("/")
