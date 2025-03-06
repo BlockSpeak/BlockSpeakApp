@@ -39,7 +39,22 @@ users = {}
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id) if user_id in users else None
+    return users.get(user_id)
+
+def save_users():
+    with open("users.json", "w") as f:
+        json.dump({k: {"id": v.id, "subscription": v.subscription, "stripe_customer_id": v.stripe_customer_id} for k, v in users.items()}, f)
+
+def load_users():
+    if os.path.exists("users.json"):
+        with open("users.json", "r") as f:
+            data = json.load(f)
+            for uid, info in data.items():
+                users[uid] = User(info["id"])
+                users[uid].subscription = info["subscription"]
+                users[uid].stripe_customer_id = info["stripe_customer_id"]
+
+load_users()
 
 def is_bitcoin_address(text):
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
@@ -52,6 +67,8 @@ def is_solana_address(text):
 
 def normalize_question(text):
     text = text.lower().strip()
+    if "predict" in text or "price in" in text:
+        return "price_prediction"
     if "gas" in text:
         return "gas"
     elif "solona" in text or "solana" in text or "sol" in text:
@@ -60,8 +77,6 @@ def normalize_question(text):
         return "bitcoin block" if "block" in text else "bitcoin price"
     elif "eth" in text or "ethereum" in text:
         return "ethereum block" if "block" in text else "ethereum price"
-    elif "predict" in text or "price in" in text:
-        return "price_prediction"
     return text
 
 def get_crypto_price(coin):
@@ -378,6 +393,7 @@ def login():
                 customer = stripe.Customer.create(email=user_id)
                 users[user_id] = User(user_id)
                 users[user_id].stripe_customer_id = customer["id"]
+                save_users()
             except stripe.error.StripeError as e:
                 app.logger.error(f"Stripe customer creation failed: {str(e)}")
                 return render_template("login.html", error="Login failed - try again later.")
@@ -424,6 +440,7 @@ def subscription_success():
         subscriptions = stripe.Subscription.list(customer=current_user.stripe_customer_id)
         if subscriptions.data and subscriptions.data[0].status == "active":
             app.logger.info(f"Subscription confirmed for {current_user.id}: {plan}")
+            save_users()
         else:
             app.logger.error(f"Subscription not active for {current_user.id}")
             return "Subscription not confirmed - contact support.", 500
@@ -506,6 +523,22 @@ def query():
             """)
             wallet_data = {"address": address, "chain": chain}
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
+    elif "price_prediction" in normalized_question and current_user.subscription != "free":
+        if "bitcoin" in user_question:
+            coin = "bitcoin"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        elif "ethereum" in user_question:
+            coin = "ethereum"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        elif "solana" in user_question:
+            coin = "solana"
+            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            answer = predict_price(coin, days)
+        else:
+            answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     elif "price" in normalized_question:
         if "bitcoin" in normalized_question:
             price = get_crypto_price("bitcoin")
@@ -577,24 +610,19 @@ def query():
         else:
             answer = "Oops! Could not fetch Solana slot data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    elif "price_prediction" in normalized_question and current_user.subscription != "free":
-        if "bitcoin" in user_question:
-            coin = "bitcoin"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
-            answer = predict_price(coin, days)
-        elif "ethereum" in user_question:
-            coin = "ethereum"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
-            answer = predict_price(coin, days)
-        elif "solana" in user_question:
-            coin = "solana"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
-            answer = predict_price(coin, days)
-        else:
-            answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
-        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     else:
-        answer = "Please upgrade to a paid plan to use price predictions."
+        if "price_prediction" in normalized_question:
+            answer = "Please upgrade to a paid plan to use price predictions."
+        else:
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
+                    max_tokens=100
+                )
+                answer = response.choices[0].message.content
+            except Exception as e:
+                answer = f"Sorry, I had trouble answering that: {str(e)}"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
 
     session["history"] = history[:3]
