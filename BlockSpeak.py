@@ -1,6 +1,7 @@
 import os
 import json
 import os.path
+import sqlite3
 from flask import Flask, request, render_template, session, jsonify, redirect, url_for
 from markupsafe import Markup
 import requests
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 import stripe
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -29,32 +31,39 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-class User(UserMixin):
-    def __init__(self, id):
-        self.id = id
-        self.subscription = "free"
-        self.stripe_customer_id = None
+def init_db():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        subscription TEXT DEFAULT 'free',
+        stripe_customer_id TEXT
+    )''')
+    conn.commit()
+    conn.close()
 
-users = {}
+init_db()
+
+class User(UserMixin):
+    def __init__(self, email, subscription="free", stripe_customer_id=None):
+        self.email = email
+        self.subscription = subscription
+        self.stripe_customer_id = stripe_customer_id
+    def get_id(self):
+        return self.email
 
 @login_manager.user_loader
-def load_user(user_id):
-    return users.get(user_id)
-
-def save_users():
-    with open("users.json", "w") as f:
-        json.dump({k: {"id": v.id, "subscription": v.subscription, "stripe_customer_id": v.stripe_customer_id} for k, v in users.items()}, f)
-
-def load_users():
-    if os.path.exists("users.json"):
-        with open("users.json", "r") as f:
-            data = json.load(f)
-            for uid, info in data.items():
-                users[uid] = User(info["id"])
-                users[uid].subscription = info["subscription"]
-                users[uid].stripe_customer_id = info["stripe_customer_id"]
-
-load_users()
+def load_user(email):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT email, subscription, stripe_customer_id FROM users WHERE email = ?", (email,))
+    user_data = c.fetchone()
+    conn.close()
+    if user_data:
+        return User(user_data[0], user_data[1], user_data[2])
+    return None
 
 def is_bitcoin_address(text):
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
@@ -382,23 +391,52 @@ def coin_graph(coin_id):
     graph_data = get_coin_graph(coin_id)
     return jsonify(graph_data)
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        if not "@" in email or not "." in email:
+            return render_template("register.html", error="Please enter a valid email.")
+        if len(password) < 8:
+            return render_template("register.html", error="Password must be at least 8 characters.")
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        try:
+            hashed_password = generate_password_hash(password)
+            c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, hashed_password))
+            conn.commit()
+            try:
+                customer = stripe.Customer.create(email=email)
+                c.execute("UPDATE users SET stripe_customer_id = ? WHERE email = ?", (customer["id"], email))
+                conn.commit()
+            except stripe.error.StripeError as e:
+                app.logger.error(f"Stripe customer creation failed: {str(e)}")
+                return render_template("register.html", error="Registration failed - try again later.")
+            user = User(email)
+            login_user(user)
+            return redirect(url_for("home"))
+        except sqlite3.IntegrityError:
+            return render_template("register.html", error="Email already registered.")
+        finally:
+            conn.close()
+    return render_template("register.html", error=None)
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user_id = request.form["user_id"]
-        if not "@" in user_id or not "." in user_id:
-            return render_template("login.html", error="Please enter a valid email.")
-        if user_id not in users:
-            try:
-                customer = stripe.Customer.create(email=user_id)
-                users[user_id] = User(user_id)
-                users[user_id].stripe_customer_id = customer["id"]
-                save_users()
-            except stripe.error.StripeError as e:
-                app.logger.error(f"Stripe customer creation failed: {str(e)}")
-                return render_template("login.html", error="Login failed - try again later.")
-        login_user(users[user_id])
-        return redirect(url_for("home"))
+        email = request.form["email"]
+        password = request.form["password"]
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("SELECT email, password, subscription, stripe_customer_id FROM users WHERE email = ?", (email,))
+        user_data = c.fetchone()
+        conn.close()
+        if user_data and check_password_hash(user_data[1], password):
+            user = User(user_data[0], user_data[2], user_data[3])
+            login_user(user)
+            return redirect(url_for("home"))
+        return render_template("login.html", error="Invalid email or password.")
     return render_template("login.html", error=None)
 
 @app.route("/logout")
@@ -436,13 +474,17 @@ def subscribe():
 def subscription_success():
     plan = request.args.get("plan")
     if plan in ["basic", "pro"]:
-        current_user.subscription = plan
         subscriptions = stripe.Subscription.list(customer=current_user.stripe_customer_id)
         if subscriptions.data and subscriptions.data[0].status == "active":
-            app.logger.info(f"Subscription confirmed for {current_user.id}: {plan}")
-            save_users()
+            current_user.subscription = plan
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            c.execute("UPDATE users SET subscription = ? WHERE email = ?", (plan, current_user.email))
+            conn.commit()
+            conn.close()
+            app.logger.info(f"Subscription confirmed for {current_user.email}: {plan}")
         else:
-            app.logger.error(f"Subscription not active for {current_user.id}")
+            app.logger.error(f"Subscription not active for {current_user.email}")
             return "Subscription not confirmed - contact support.", 500
     return redirect(url_for("home"))
 
@@ -465,7 +507,7 @@ def how_it_works():
 @app.route("/query", methods=["POST"])
 @login_required
 def query():
-    app.logger.info(f"Query from {current_user.id}, subscription: {current_user.subscription}")
+    app.logger.info(f"Query from {current_user.email}, subscription: {current_user.subscription}")
     user_question = request.form["question"].strip()
     normalized_question = normalize_question(user_question)
     eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"

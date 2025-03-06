@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Login - BlockSpeak Pro</title>
+    <title>Register - BlockSpeak Pro</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
@@ -10,16 +10,16 @@
             <h1><a href="{{ url_for('home') }}" class="logo">BlockSpeak Pro</a></h1>
         </header>
         <section class="content">
-            <h2>Login</h2>
+            <h2>Register</h2>
             <form method="POST">
                 <input type="email" name="email" placeholder="Enter your email" required>
-                <input type="password" name="password" placeholder="Enter your password" required>
-                <button type="submit">Login</button>
+                <input type="password" name="password" placeholder="Enter a password" required>
+                <button type="submit">Register</button>
             </form>
             {% if error %}
             <p style="color: red;">{{ error }}</p>
             {% endif %}
-            <p>Need an account? <a href="{{ url_for('register') }}">Register</a></p>
+            <p>Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
         </section>
     </div>
 </body>
