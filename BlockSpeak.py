@@ -5,10 +5,14 @@ import requests
 from openai import OpenAI
 import feedparser
 from datetime import datetime, timedelta
+import logging
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 app.config["SESSION_TYPE"] = "filesystem"
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -168,18 +172,28 @@ def get_historical_balance(address, chain):
         txs = response.get("txs", [])
         balance = response.get("balance", 0) / 1e8
         daily_balances = {}
-        # Sort transactions by "received" timestamp
-        sorted_txs = sorted([tx for tx in txs if "received" in tx], key=lambda x: datetime.fromisoformat(x["received"].replace("Z", "+00:00")))
+        # Filter and sort transactions by "received" timestamp
+        sorted_txs = sorted(
+            [tx for tx in txs if "received" in tx],
+            key=lambda x: datetime.fromisoformat(x["received"].replace("Z", "+00:00"))
+        )
         for tx in sorted_txs:
-            timestamp = datetime.fromisoformat(tx["received"].replace("Z", "+00:00"))
-            if timestamp < thirty_days_ago:
+            try:
+                timestamp_str = tx["received"]
+                timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                app.logger.info(f"Processing tx with timestamp: {timestamp}")
+                if timestamp < thirty_days_ago:
+                    app.logger.info(f"Skipping tx from {timestamp} (older than 30 days)")
+                    continue
+                day = timestamp.strftime("%Y-%m-%d")
+                if tx["inputs"][0]["addresses"][0] == address:
+                    balance -= sum(output["value"] for output in tx["outputs"]) / 1e8
+                else:
+                    balance += tx["total"] / 1e8
+                daily_balances[day] = balance
+            except ValueError as e:
+                app.logger.error(f"Invalid timestamp format in tx: {tx}, error: {e}")
                 continue
-            day = timestamp.strftime("%Y-%m-%d")
-            if tx["inputs"][0]["addresses"][0] == address:
-                balance -= sum(output["value"] for output in tx["outputs"]) / 1e8
-            else:
-                balance += tx["total"] / 1e8
-            daily_balances[day] = balance
         for day in [thirty_days_ago + timedelta(days=x) for x in range(31)]:
             day_str = day.strftime("%Y-%m-%d")
             balances.append({"date": day_str, "balance": daily_balances.get(day_str, balance)})
