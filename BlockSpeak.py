@@ -270,6 +270,7 @@ def query():
         analytics = get_wallet_analytics(user_question)
         if "error" in analytics:
             answer = analytics["error"]
+            wallet_data = None
         else:
             chain = analytics["chain"]
             address = user_question
@@ -314,8 +315,9 @@ def query():
                 </script>
             </div>
             """)
+            wallet_data = {"address": address, "chain": chain}
         history = session.get("history", [])
-        history.insert(0, {"question": user_question, "answer": answer})
+        history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
         session["history"] = history[:5]
         news_items = get_news_items()
         return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
@@ -395,7 +397,7 @@ def query():
             answer = f"Sorry, I had trouble answering that: {str(e)}"
 
     history = session.get("history", [])
-    history.insert(0, {"question": user_question, "answer": answer})
+    history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     session["history"] = history[:5]
     news_items = get_news_items()
     return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
