@@ -15,7 +15,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Step 1: Wallet Address Detection
 def is_bitcoin_address(text):
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
 
@@ -159,7 +158,6 @@ def get_wallet_analytics(address):
         return {"error": "Invalid wallet address"}
     return analytics
 
-# New Graph Logic: Historical Balances
 def get_historical_balance(address, chain):
     balances = []
     now = datetime.now()
@@ -170,8 +168,10 @@ def get_historical_balance(address, chain):
         txs = response.get("txs", [])
         balance = response.get("balance", 0) / 1e8
         daily_balances = {}
-        for tx in sorted(txs, key=lambda x: x["confirmed"]):
-            timestamp = datetime.fromisoformat(tx["confirmed"].replace("Z", "+00:00"))
+        # Sort transactions by "received" timestamp
+        sorted_txs = sorted([tx for tx in txs if "received" in tx], key=lambda x: datetime.fromisoformat(x["received"].replace("Z", "+00:00")))
+        for tx in sorted_txs:
+            timestamp = datetime.fromisoformat(tx["received"].replace("Z", "+00:00"))
             if timestamp < thirty_days_ago:
                 continue
             day = timestamp.strftime("%Y-%m-%d")
@@ -310,7 +310,6 @@ def query():
         session["history"] = history[:5]
         news_items = get_news_items()
         return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    # Add more query logic here if needed (e.g., price queries)
     return render_template("index.html", answer="Sorry, I can only analyze wallet addresses right now!", question=user_question, history=session["history"])
 
 if __name__ == "__main__":
