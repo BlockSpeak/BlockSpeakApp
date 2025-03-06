@@ -256,11 +256,26 @@ def get_top_coins():
 
 def get_coin_graph(coin_id):
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=daily"
-    response = requests.get(url).json()
-    prices = response["prices"]
-    dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
-    values = [p[1] for p in prices]
-    return {"dates": dates, "prices": values}
+    try:
+        response = requests.get(url).json()
+        if "prices" not in response:
+            app.logger.error(f"No 'prices' in CoinGecko response for {coin_id}: {response}")
+            # Fallback: return flat line if API fails
+            now = datetime.now(timezone.utc)
+            dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
+            prices = [0] * 7  # Flat line at 0
+            return {"dates": dates, "prices": prices}
+        prices = response["prices"]
+        dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
+        values = [p[1] for p in prices]
+        return {"dates": dates, "prices": values}
+    except Exception as e:
+        app.logger.error(f"CoinGecko API failed for {coin_id}: {str(e)}")
+        # Fallback on exception
+        now = datetime.now(timezone.utc)
+        dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
+        prices = [0] * 7
+        return {"dates": dates, "prices": prices}
 
 @app.route("/graph_data/<address>/<chain>")
 def graph_data(address, chain):
