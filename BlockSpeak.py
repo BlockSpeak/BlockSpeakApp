@@ -268,8 +268,6 @@ def how_it_works():
 def query():
     user_question = request.form["question"].strip()
     normalized_question = normalize_question(user_question)
-    eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-    sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
     if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
         analytics = get_wallet_analytics(user_question)
@@ -319,12 +317,23 @@ def query():
                 </script>
             </div>
             """)
-        history = session.get("history", [])
-        history.insert(0, {"question": user_question, "answer": answer})
-        session["history"] = history[:5]
-        news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
-    return render_template("index.html", answer="Sorry, I can only analyze wallet addresses right now!", question=user_question, history=session["history"])
+    else:
+        # Use LLM for other questions
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",  # Or latest model in 2025
+                messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
+                max_tokens=100
+            )
+            answer = response.choices[0].message.content
+        except Exception as e:
+            answer = f"Sorry, I had trouble answering that: {str(e)}"
+
+    history = session.get("history", [])
+    history.insert(0, {"question": user_question, "answer": answer})
+    session["history"] = history[:5]
+    news_items = get_news_items()
+    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
 
 if __name__ == "__main__":
     # For local testing only
