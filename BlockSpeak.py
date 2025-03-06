@@ -89,9 +89,15 @@ def normalize_question(text):
     return text
 
 def get_crypto_price(coin):
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
-    response = requests.get(url).json()
-    return response.get(coin, {}).get("usd", "Price unavailable")
+    # #CurrentPrice - Fetch real-time price from CoinCap
+    url = f"https://api.coincap.io/v2/assets/{coin}"
+    try:
+        response = requests.get(url).json()
+        price = float(response["data"]["priceUsd"])
+        return f"{price:.2f}"
+    except Exception as e:
+        app.logger.error(f"CoinCap price fetch failed for {coin}: {str(e)}")
+        return "Price unavailable"
 
 def get_trending_crypto():
     url = "https://api.coingecko.com/api/v3/search/trending"
@@ -288,6 +294,7 @@ def get_historical_balance(address, chain):
     return balances
 
 def get_top_coins():
+    # #TopCoins - Fetch top 4 coins by market cap from CoinCap
     cache_file = "top_coins_cache.json"
     now = datetime.now(timezone.utc)
     if os.path.exists(cache_file):
@@ -295,71 +302,59 @@ def get_top_coins():
             cached = json.load(f)
         if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
             return cached["data"]
-    url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=4&page=1&sparkline=true"
+    url = "https://api.coincap.io/v2/assets?limit=4"
     try:
         response = requests.get(url).json()
-        if not isinstance(response, list):
-            app.logger.error(f"CoinGecko response not a list: {response}")
-            fallback = [
-                {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-                {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-                {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-                {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"}
-            ]
-            with open(cache_file, "w") as f:
-                json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
-            return fallback
         coins = []
-        for coin in response[:4]:
+        for coin in response["data"]:
             coins.append({
                 "id": coin["id"],
                 "name": coin["name"],
-                "image": coin["image"],
-                "price": f"{coin['current_price']:.2f}",
-                "market_cap": f"{coin['market_cap']:,}",
-                "change": round(coin["price_change_percentage_24h"], 2),
-                "sparkline": coin["sparkline_in_7d"]["price"],
-                "graph_color": "#2ecc71" if coin["price_change_percentage_24h"] > 0 else "#e74c3c"
+                "image": f"https://assets.coincap.io/assets/icons/{coin['symbol'].lower()}@2x.png",  # CoinCap doesn't provide images, use their icon CDN
+                "price": f"{float(coin['priceUsd']):.2f}",
+                "market_cap": f"{int(float(coin['marketCapUsd'])):,}",
+                "change": round(float(coin["changePercent24Hr"]), 2),
+                "graph_color": "#2ecc71" if float(coin["changePercent24Hr"]) > 0 else "#e74c3c"
             })
         with open(cache_file, "w") as f:
             json.dump({"data": coins, "timestamp": now.isoformat()}, f)
         return coins
     except Exception as e:
-        app.logger.error(f"CoinGecko top coins failed: {str(e)}")
+        app.logger.error(f"CoinCap top coins failed: {str(e)}")
         fallback = [
-            {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-            {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-            {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
-            {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"}
+            {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coincap.io/assets/icons/btc@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
+            {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coincap.io/assets/icons/eth@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
+            {"id": "tether", "name": "Tether", "image": "https://assets.coincap.io/assets/icons/usdt@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
+            {"id": "binance-coin", "name": "BNB", "image": "https://assets.coincap.io/assets/icons/bnb@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"}
         ]
         with open(cache_file, "w") as f:
             json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
         return fallback
 
 def get_coin_graph(coin_id):
+    # #CoinGraph - Fetch 7-day price history for graph from CoinCap
     cache_key = f"coin_graph_{coin_id}"
     if cache_key in session:
         cached = session[cache_key]
         if cached["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=5):
             return cached["data"]
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=daily"
+    url = f"https://api.coincap.io/v2/assets/{coin_id}/history?interval=d1&start={(int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000))}&end={(int(datetime.now(timezone.utc).timestamp() * 1000))}"
     try:
         response = requests.get(url).json()
-        if "prices" not in response:
-            app.logger.error(f"No 'prices' in CoinGecko response for {coin_id}: {response}")
+        if "data" not in response or not response["data"]:
+            app.logger.error(f"No data in CoinCap response for {coin_id}: {response}")
             now = datetime.now(timezone.utc)
             dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
             prices = [0] * 7
         else:
-            prices = response["prices"]
-            dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
-            values = [p[1] for p in prices]
-            prices = values
+            prices_data = response["data"]
+            dates = [datetime.fromtimestamp(p["time"] / 1000).strftime("%Y-%m-%d") for p in prices_data]
+            prices = [float(p["priceUsd"]) for p in prices_data]
         graph_data = {"dates": dates, "prices": prices}
         session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
         return graph_data
     except Exception as e:
-        app.logger.error(f"CoinGecko API failed for {coin_id}: {str(e)}")
+        app.logger.error(f"CoinCap graph API failed for {coin_id}: {str(e)}")
         now = datetime.now(timezone.utc)
         dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
         prices = [0] * 7
@@ -368,12 +363,13 @@ def get_coin_graph(coin_id):
         return graph_data
 
 def predict_price(coin, days):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin}/market_chart?vs_currency=usd&days=30&interval=daily"
+    # #PricePrediction - Predict future price based on 30-day CoinCap history
+    url = f"https://api.coincap.io/v2/assets/{coin}/history?interval=d1&start={(int((datetime.now(timezone.utc) - timedelta(days=30)).timestamp() * 1000))}&end={(int(datetime.now(timezone.utc).timestamp() * 1000))}"
     try:
         response = requests.get(url).json()
-        if "prices" not in response:
+        if "data" not in response or not response["data"]:
             return "Sorry, couldn't fetch price data for prediction."
-        prices = [p[1] for p in response["prices"]]
+        prices = [float(p["priceUsd"]) for p in response["data"]]
         avg_change = sum((prices[i] - prices[i-1]) for i in range(1, len(prices))) / (len(prices) - 1)
         current_price = prices[-1]
         predicted = current_price + (avg_change * days)
