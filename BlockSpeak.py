@@ -238,16 +238,46 @@ def get_historical_balance(address, chain):
             balances.append({"date": day_str, "balance": daily_balances.get(day_str, balance)})
     return balances
 
+def get_top_coins():
+    url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1&sparkline=true"
+    response = requests.get(url).json()
+    coins = []
+    for coin in response:
+        coins.append({
+            "id": coin["id"],
+            "name": coin["name"],
+            "image": coin["image"],
+            "price": f"{coin['current_price']:.2f}",
+            "market_cap": f"{coin['market_cap']:,}",
+            "change": round(coin["price_change_percentage_24h"], 2),
+            "sparkline": coin["sparkline_in_7d"]["price"]
+        })
+    return coins
+
+def get_coin_graph(coin_id):
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=daily"
+    response = requests.get(url).json()
+    prices = response["prices"]
+    dates = [datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d") for p in prices]
+    values = [p[1] for p in prices]
+    return {"dates": dates, "prices": values}
+
 @app.route("/graph_data/<address>/<chain>")
 def graph_data(address, chain):
     balances = get_historical_balance(address, chain)
     return jsonify(balances)
 
+@app.route("/coin_graph/<coin_id>")
+def coin_graph(coin_id):
+    graph_data = get_coin_graph(coin_id)
+    return jsonify(graph_data)
+
 @app.route("/")
 def home():
     session["history"] = session.get("history", [])
     news_items = get_news_items()
-    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
+    top_coins = get_top_coins()
+    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
 
 @app.route("/about")
 def about():
@@ -318,7 +348,8 @@ def query():
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
         session["history"] = history[:5]
         news_items = get_news_items()
-        return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
+        top_coins = get_top_coins()
+        return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
     elif "price" in normalized_question:
         if "bitcoin" in normalized_question:
             price = get_crypto_price("bitcoin")
@@ -398,7 +429,8 @@ def query():
     history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     session["history"] = history[:5]
     news_items = get_news_items()
-    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles())
+    top_coins = get_top_coins()
+    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)

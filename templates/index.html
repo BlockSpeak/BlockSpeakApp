@@ -7,7 +7,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>BlockSpeak</h1>
+            <h1><a href="{{ url_for('home') }}" class="logo">BlockSpeak</a></h1>
             <nav>
                 <a href="{{ url_for('how_it_works') }}">How It Works</a>
                 <a href="{{ url_for('about') }}">About</a>
@@ -27,12 +27,103 @@
             <div class="answer">{{ answer | safe }}</div>
         </section>
         {% endif %}
+        <section class="coin-table">
+            <h2>Top Crypto Coins</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Coin</th>
+                        <th>Price</th>
+                        <th>Market Cap</th>
+                        <th>24h Change</th>
+                        <th>Graph (7d)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for coin in top_coins %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <img src="{{ coin.image }}" alt="{{ coin.name }}" width="24" height="24">
+                            {{ coin.name }}
+                        </td>
+                        <td>${{ coin.price }}</td>
+                        <td>${{ coin.market_cap }}</td>
+                        <td class="{{ 'positive' if coin.change > 0 else 'negative' }}">{{ coin.change }}%</td>
+                        <td>
+                            <canvas id="chart-{{ loop.index }}" width="100" height="50"></canvas>
+                            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                            <script>
+                                    fetch('/coin_graph/{{ coin.id }}')
+                                        .then(response => response.json())
+                                        .then(data => {
+                                            const ctx = document.getElementById('chart-{{ loop.index }}').getContext('2d');
+                                            new Chart(ctx, {
+                                                type: 'line',
+                                                data: {
+                                                    labels: data.dates,
+                                                    datasets: [{
+                                                        data: data.prices,
+                                                        borderColor: '{{ '#2ecc71' if coin.change > 0 else '#e74c3c' }}',
+                                                        borderWidth: 1,
+                                                        fill: false,
+                                                        pointRadius: 0
+                                                    }]
+                                                },
+                                                options: {
+                                                    scales: { x: { display: false }, y: { display: false } },
+                                                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                                                }
+                                            });
+                                        });
+                            </script>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
         {% if history %}
         <section class="history-card">
             <h2>Recent Queries</h2>
             {% for entry in history %}
             <div class="history-item">
-                <strong>{{ entry.question }}</strong>: <span>{{ entry.answer | safe }}</span>
+                <strong>{{ entry.question }}</strong>:
+                <span>{{ entry.answer | safe }}</span>
+                {% if entry.wallet_data %}
+                <canvas id="historyChart-{{ loop.index }}" width="400" height="200"></canvas>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                <script>
+                                fetch('/graph_data/{{ entry.wallet_data.address }}/{{ entry.wallet_data.chain }}')
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        const ctx = document.getElementById('historyChart-{{ loop.index }}').getContext('2d');
+                                        const chainColors = {
+                                            'Bitcoin': '#f7931a',
+                                            'Ethereum': '#3498db',
+                                            'Solana': '#9945ff'
+                                        };
+                                        new Chart(ctx, {
+                                            type: 'line',
+                                            data: {
+                                                labels: data.map(d => d.date),
+                                                datasets: [{
+                                                    label: 'Balance History',
+                                                    data: data.map(d => d.balance),
+                                                    borderColor: chainColors['{{ entry.wallet_data.chain }}'],
+                                                    tension: 0.1,
+                                                    fill: false
+                                                }]
+                                            },
+                                            options: {
+                                                scales: { y: { beginAtZero: true } },
+                                                plugins: { tooltip: { mode: 'index', intersect: false } }
+                                            }
+                                        });
+                                    });
+                </script>
+                {% endif %}
             </div>
             {% endfor %}
         </section>
