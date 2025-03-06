@@ -1,7 +1,5 @@
 flask
 requests
 openai
-feedparser
 markupsafe
-python-dotenv
 gunicorn
