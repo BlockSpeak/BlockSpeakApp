@@ -1,4 +1,6 @@
 import os
+import json
+import os.path
 from flask import Flask, request, render_template, session, jsonify, redirect, url_for
 from markupsafe import Markup
 import requests
@@ -262,10 +264,14 @@ def get_historical_balance(address, chain):
     return balances
 
 def get_top_coins():
-    cache_key = "top_coins_cache"
-    if cache_key in session:
-        cached = session[cache_key]
-        if cached["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=15):
+    cache_file = "top_coins_cache.json"
+    now = datetime.now(timezone.utc)
+    
+    # Check if cache exists and is fresh
+    if os.path.exists(cache_file):
+        with open(cache_file, "r") as f:
+            cached = json.load(f)
+        if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
             return cached["data"]
 
     url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=4&page=1&sparkline=true"
@@ -279,7 +285,8 @@ def get_top_coins():
                 {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
                 {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
             ]
-            session[cache_key] = {"data": fallback, "timestamp": datetime.now(timezone.utc)}
+            with open(cache_file, "w") as f:
+                json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
             return fallback
         coins = []
         for coin in response[:4]:
@@ -292,7 +299,8 @@ def get_top_coins():
                 "change": round(coin["price_change_percentage_24h"], 2),
                 "sparkline": coin["sparkline_in_7d"]["price"]
             })
-        session[cache_key] = {"data": coins, "timestamp": datetime.now(timezone.utc)}
+        with open(cache_file, "w") as f:
+            json.dump({"data": coins, "timestamp": now.isoformat()}, f)
         return coins
     except Exception as e:
         app.logger.error(f"CoinGecko top coins failed: {str(e)}")
@@ -302,7 +310,8 @@ def get_top_coins():
             {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
             {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
         ]
-        session[cache_key] = {"data": fallback, "timestamp": datetime.now(timezone.utc)}
+        with open(cache_file, "w") as f:
+            json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
         return fallback
 
 def get_coin_graph(coin_id):
