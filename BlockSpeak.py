@@ -25,7 +25,6 @@ STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")
 stripe.api_key = STRIPE_SECRET_KEY
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -33,10 +32,10 @@ login_manager.login_view = "login"
 class User(UserMixin):
     def __init__(self, id):
         self.id = id
-        self.subscription = "free"  # Default to free tier
-        self.stripe_customer_id = None  # Track Stripe customer for subscriptions
+        self.subscription = "free"
+        self.stripe_customer_id = None
 
-users = {}  # Simple in-memory user store (replace with DB later)
+users = {}
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -256,7 +255,7 @@ def get_historical_balance(address, chain):
             if timestamp < thirty_days_ago:
                 continue
             day = timestamp.strftime("%Y-%m-%d")
-            balance_change = 0.001  # Placeholder
+            balance_change = 0.001
             balance -= balance_change
             daily_balances[day] = balance
         for day in [thirty_days_ago + timedelta(days=x) for x in range(31)]:
@@ -267,14 +266,11 @@ def get_historical_balance(address, chain):
 def get_top_coins():
     cache_file = "top_coins_cache.json"
     now = datetime.now(timezone.utc)
-    
-    # Check if cache exists and is fresh
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
             cached = json.load(f)
         if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
             return cached["data"]
-
     url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=4&page=1&sparkline=true"
     try:
         response = requests.get(url).json()
@@ -321,7 +317,6 @@ def get_coin_graph(coin_id):
         cached = session[cache_key]
         if cached["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=5):
             return cached["data"]
-    
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=daily"
     try:
         response = requests.get(url).json()
@@ -354,7 +349,6 @@ def predict_price(coin, days):
         if "prices" not in response:
             return "Sorry, couldn't fetch price data for prediction."
         prices = [p[1] for p in response["prices"]]
-        # Simple moving average prediction (upgrade later with ML)
         avg_change = sum((prices[i] - prices[i-1]) for i in range(1, len(prices))) / (len(prices) - 1)
         current_price = prices[-1]
         predicted = current_price + (avg_change * days)
@@ -413,14 +407,27 @@ def subscribe():
             customer=current_user.stripe_customer_id,
             line_items=[{"price": price_id, "quantity": 1}],
             mode="subscription",
-            success_url=url_for("home", _external=True),
+            success_url=url_for("subscription_success", plan=plan, _external=True),
             cancel_url=url_for("home", _external=True),
         )
-        current_user.subscription = plan
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe checkout failed: {str(e)}")
         return "Subscription failed - try again later.", 500
     return redirect(checkout_session.url)
+
+@app.route("/subscription_success")
+@login_required
+def subscription_success():
+    plan = request.args.get("plan")
+    if plan in ["basic", "pro"]:
+        current_user.subscription = plan
+        subscriptions = stripe.Subscription.list(customer=current_user.stripe_customer_id)
+        if subscriptions.data and subscriptions.data[0].status == "active":
+            app.logger.info(f"Subscription confirmed for {current_user.id}: {plan}")
+        else:
+            app.logger.error(f"Subscription not active for {current_user.id}")
+            return "Subscription not confirmed - contact support.", 500
+    return redirect(url_for("home"))
 
 @app.route("/")
 def home():
@@ -441,11 +448,13 @@ def how_it_works():
 @app.route("/query", methods=["POST"])
 @login_required
 def query():
+    app.logger.info(f"Query from {current_user.id}, subscription: {current_user.subscription}")
     user_question = request.form["question"].strip()
     normalized_question = normalize_question(user_question)
     eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
     sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
+    history = session.get("history", [])
     if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
         analytics = get_wallet_analytics(user_question)
         if "error" in analytics:
@@ -496,9 +505,7 @@ def query():
             </div>
             """)
             wallet_data = {"address": address, "chain": chain}
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
-        session["history"] = history[:5]
     elif "price" in normalized_question:
         if "bitcoin" in normalized_question:
             price = get_crypto_price("bitcoin")
@@ -511,15 +518,11 @@ def query():
             answer = f"The current Solana price is ${price} USD."
         else:
             answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
         answer = Markup("Here is what's trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -528,9 +531,7 @@ def query():
             answer = f"The current Ethereum gas price is {gas_price} Gwei."
         else:
             answer = "Oops! Could not fetch gas price."
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "transactions" in normalized_question or "many" in normalized_question:
         block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         block_response = requests.post(eth_url, json=block_payload).json()
@@ -545,9 +546,7 @@ def query():
                 answer = "Oops! Could not fetch transaction data."
         else:
             answer = "Oops! Could not fetch block data."
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "ethereum block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -556,9 +555,7 @@ def query():
             answer = f"The latest Ethereum block number is {block_number}."
         else:
             answer = "Oops! Could not fetch Ethereum block data."
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -570,9 +567,7 @@ def query():
         except Exception as e:
             app.logger.error(f"Bitcoin block query failed: {str(e)}")
             answer = "Something went wrong with Bitcoin - try again!"
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         response = requests.post(sol_url, json=payload).json()
@@ -581,10 +576,8 @@ def query():
             answer = f"The latest Solana slot number is {slot_number}."
         else:
             answer = "Oops! Could not fetch Solana slot data."
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
-    elif "price_prediction" in normalized_question:
+    elif "price_prediction" in normalized_question and current_user.subscription != "free":
         if "bitcoin" in user_question:
             coin = "bitcoin"
             days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
@@ -599,26 +592,15 @@ def query():
             answer = predict_price(coin, days)
         else:
             answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
-        history = session.get("history", [])
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
     else:
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": f"Answer this about crypto: {user_question}"}],
-                max_tokens=100
-            )
-            answer = response.choices[0].message.content
-        except Exception as e:
-            answer = f"Sorry, I had trouble answering that: {str(e)}"
-        history = session.get("history", [])
+        answer = "Please upgrade to a paid plan to use price predictions."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-        session["history"] = history[:5]
 
+    session["history"] = history[:3]
     news_items = get_news_items()
     top_coins = get_top_coins()
-    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY)
+    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=current_user.subscription)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
