@@ -262,17 +262,25 @@ def get_historical_balance(address, chain):
     return balances
 
 def get_top_coins():
+    cache_key = "top_coins_cache"
+    if cache_key in session:
+        cached = session[cache_key]
+        if cached["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=15):
+            return cached["data"]
+
     url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=4&page=1&sparkline=true"
     try:
         response = requests.get(url).json()
         if not isinstance(response, list):
             app.logger.error(f"CoinGecko response not a list: {response}")
-            return [
+            fallback = [
                 {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
                 {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
                 {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
                 {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
             ]
+            session[cache_key] = {"data": fallback, "timestamp": datetime.now(timezone.utc)}
+            return fallback
         coins = []
         for coin in response[:4]:
             coins.append({
@@ -284,15 +292,18 @@ def get_top_coins():
                 "change": round(coin["price_change_percentage_24h"], 2),
                 "sparkline": coin["sparkline_in_7d"]["price"]
             })
+        session[cache_key] = {"data": coins, "timestamp": datetime.now(timezone.utc)}
         return coins
     except Exception as e:
         app.logger.error(f"CoinGecko top coins failed: {str(e)}")
-        return [
+        fallback = [
             {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
             {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
             {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
             {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
         ]
+        session[cache_key] = {"data": fallback, "timestamp": datetime.now(timezone.utc)}
+        return fallback
 
 def get_coin_graph(coin_id):
     cache_key = f"coin_graph_{coin_id}"
