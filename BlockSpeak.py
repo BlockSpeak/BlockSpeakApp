@@ -301,10 +301,10 @@ def get_top_coins():
         if not isinstance(response, list):
             app.logger.error(f"CoinGecko response not a list: {response}")
             fallback = [
-                {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-                {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-                {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-                {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
+                {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+                {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+                {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+                {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"}
             ]
             with open(cache_file, "w") as f:
                 json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
@@ -318,7 +318,8 @@ def get_top_coins():
                 "price": f"{coin['current_price']:.2f}",
                 "market_cap": f"{coin['market_cap']:,}",
                 "change": round(coin["price_change_percentage_24h"], 2),
-                "sparkline": coin["sparkline_in_7d"]["price"]
+                "sparkline": coin["sparkline_in_7d"]["price"],
+                "graph_color": "#2ecc71" if coin["price_change_percentage_24h"] > 0 else "#e74c3c"
             })
         with open(cache_file, "w") as f:
             json.dump({"data": coins, "timestamp": now.isoformat()}, f)
@@ -326,10 +327,10 @@ def get_top_coins():
     except Exception as e:
         app.logger.error(f"CoinGecko top coins failed: {str(e)}")
         fallback = [
-            {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-            {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-            {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7},
-            {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7}
+            {"id": "bitcoin", "name": "Bitcoin", "image": "https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+            {"id": "ethereum", "name": "Ethereum", "image": "https://assets.coingecko.com/coins/images/279/thumb/ethereum.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+            {"id": "tether", "name": "Tether", "image": "https://assets.coingecko.com/coins/images/325/thumb/Tether.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"},
+            {"id": "binancecoin", "name": "BNB", "image": "https://assets.coingecko.com/coins/images/825/thumb/bnb-icon2_2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "sparkline": [0] * 7, "graph_color": "#2ecc71"}
         ]
         with open(cache_file, "w") as f:
             json.dump({"data": fallback, "timestamp": now.isoformat()}, f)
