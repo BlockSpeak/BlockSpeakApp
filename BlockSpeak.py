@@ -39,7 +39,8 @@ def init_db():
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         subscription TEXT DEFAULT 'free',
-        stripe_customer_id TEXT
+        stripe_customer_id TEXT,
+        history TEXT DEFAULT '[]'  -- Store JSON string of query history
     )''')
     conn.commit()
     conn.close()
@@ -47,10 +48,11 @@ def init_db():
 init_db()
 
 class User(UserMixin):
-    def __init__(self, email, subscription="free", stripe_customer_id=None):
+    def __init__(self, email, subscription="free", stripe_customer_id=None, history=None):
         self.email = email
         self.subscription = subscription
         self.stripe_customer_id = stripe_customer_id
+        self.history = json.loads(history) if history else []
     def get_id(self):
         return self.email
 
@@ -58,12 +60,19 @@ class User(UserMixin):
 def load_user(email):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT email, subscription, stripe_customer_id FROM users WHERE email = ?", (email,))
+    c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (email,))
     user_data = c.fetchone()
     conn.close()
     if user_data:
-        return User(user_data[0], user_data[1], user_data[2])
+        return User(user_data[0], user_data[1], user_data[2], user_data[3])
     return None
+
+def save_user_history(email, history):
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("UPDATE users SET history = ? WHERE email = ?", (json.dumps(history[:3]), email))
+    conn.commit()
+    conn.close()
 
 def is_bitcoin_address(text):
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
@@ -100,21 +109,20 @@ def get_crypto_price(coin):
         return "Price unavailable"
 
 def get_trending_crypto():
-    url = "https://api.coingecko.com/api/v3/search/trending"
+    # #Trends - Fetch trending crypto from CoinCap (simplified top 3 by volume)
+    url = "https://api.coincap.io/v2/assets?limit=3"
     try:
         response = requests.get(url).json()
-        coins = response.get("coins", [])[:3]
         trends = []
-        for coin in coins:
-            item = coin["item"]
+        for coin in response["data"]:
             trends.append({
-                "topic": item["name"],
-                "snippet": f"Trending on CoinGecko - Rank {item['market_cap_rank']}",
-                "link": f"https://www.coingecko.com/en/coins/{item['id']}"
+                "topic": coin["name"],
+                "snippet": f"Volume 24h: ${int(float(coin['volumeUsd24Hr'])):,}",
+                "link": f"https://coincap.io/assets/{coin['id']}"
             })
         return trends
     except Exception as e:
-        app.logger.error(f"Trending fetch failed: {str(e)}")
+        app.logger.error(f"CoinCap trending fetch failed: {str(e)}")
         return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
 
 def get_x_profiles():
@@ -303,16 +311,13 @@ def get_top_coins():
         if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
             return cached["data"]
     
-    # Hardcode our core coins
     coin_ids = ["bitcoin", "ethereum", "solana"]
     coins = []
     url = "https://api.coincap.io/v2/assets"
     try:
-        # Fetch all assets to filter our trio and grab a random extra
         response = requests.get(url).json()
         all_coins = response["data"]
         
-        # Get Bitcoin, Ethereum, Solana
         for coin_id in coin_ids:
             coin_data = next((c for c in all_coins if c["id"] == coin_id), None)
             if coin_data:
@@ -326,10 +331,9 @@ def get_top_coins():
                     "graph_color": "#2ecc71" if float(coin_data["changePercent24Hr"]) > 0 else "#e74c3c"
                 })
         
-        # Grab one random coin (not in our trio) from top 10
         other_coins = [c for c in all_coins[:10] if c["id"] not in coin_ids]
         if other_coins:
-            random_coin = other_coins[0]  # First non-trio coin for simplicity
+            random_coin = other_coins[0]
             coins.append({
                 "id": random_coin["id"],
                 "name": random_coin["name"],
@@ -450,11 +454,11 @@ def login():
         password = request.form["password"]
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("SELECT email, password, subscription, stripe_customer_id FROM users WHERE email = ?", (email,))
+        c.execute("SELECT email, password, subscription, stripe_customer_id, history FROM users WHERE email = ?", (email,))
         user_data = c.fetchone()
         conn.close()
         if user_data and check_password_hash(user_data[1], password):
-            user = User(user_data[0], user_data[2], user_data[3])
+            user = User(user_data[0], user_data[2], user_data[3], user_data[4])
             login_user(user)
             return redirect(url_for("home"))
         return render_template("login.html", error="Invalid email or password.")
@@ -511,11 +515,12 @@ def subscription_success():
 
 @app.route("/")
 def home():
-    session["history"] = session.get("history", [])
+    # #HomePage - Load user-specific history if authenticated
+    history = current_user.history if current_user.is_authenticated else []
     news_items = get_news_items()
     top_coins = get_top_coins()
     subscription = current_user.subscription if current_user.is_authenticated else "free"
-    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=subscription)
+    return render_template("index.html", history=history, news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=subscription)
 
 @app.route("/about")
 def about():
@@ -534,8 +539,8 @@ def query():
     eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
     sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
-    history = session.get("history", [])
-    # #WalletAnalytics - Check if it's a wallet address
+    # #UserHistory - Load and update per-account history
+    history = current_user.history
     if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
         analytics = get_wallet_analytics(user_question)
         if "error" in analytics:
@@ -587,9 +592,8 @@ def query():
             """)
             wallet_data = {"address": address, "chain": chain}
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
-    # #PricePrediction - Handle price predictions for paid users
     elif "price_prediction" in normalized_question and current_user.subscription != "free":
-        user_question_lower = user_question.lower()  # Ensure case-insensitive matching
+        user_question_lower = user_question.lower()
         if "bitcoin" in user_question_lower or "btc" in user_question_lower:
             coin = "bitcoin"
             days = 7 if "7" not in user_question_lower else int(user_question_lower.split("in")[-1].split()[0])
@@ -605,7 +609,6 @@ def query():
         else:
             answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #CurrentPrice - Fetch current prices
     elif "price" in normalized_question:
         if "bitcoin" in user_question.lower() or "btc" in user_question.lower():
             price = get_crypto_price("bitcoin")
@@ -619,12 +622,10 @@ def query():
         else:
             answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #Trends - Fetch trending crypto
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
         answer = Markup("Here is what's trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #GasPrice - Fetch Ethereum gas price
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -634,7 +635,6 @@ def query():
         else:
             answer = "Oops! Could not fetch gas price."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #TransactionCount - Fetch Ethereum block transactions
     elif "transactions" in normalized_question or "many" in normalized_question:
         block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         block_response = requests.post(eth_url, json=block_payload).json()
@@ -650,7 +650,6 @@ def query():
         else:
             answer = "Oops! Could not fetch block data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #EthereumBlock - Fetch latest Ethereum block
     elif "ethereum block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -660,7 +659,6 @@ def query():
         else:
             answer = "Oops! Could not fetch Ethereum block data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #BitcoinBlock - Fetch latest Bitcoin block
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -673,7 +671,6 @@ def query():
             app.logger.error(f"Bitcoin block query failed: {str(e)}")
             answer = "Something went wrong with Bitcoin - try again!"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #SolanaBlock - Fetch latest Solana slot
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         response = requests.post(sol_url, json=payload).json()
@@ -683,7 +680,6 @@ def query():
         else:
             answer = "Oops! Could not fetch Solana slot data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
-    # #Fallback - Handle unknown queries or free-tier prediction attempts
     else:
         if "price_prediction" in normalized_question:
             answer = "Please upgrade to a paid plan to use price predictions."
@@ -699,10 +695,13 @@ def query():
                 answer = f"Sorry, I had trouble answering that: {str(e)}"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
 
-    session["history"] = history[:3]
+    # Save updated history to user's account
+    save_user_history(current_user.email, history)
+    current_user.history = history[:3]  # Update in-memory object
+    
     news_items = get_news_items()
     top_coins = get_top_coins()
-    return render_template("index.html", answer=answer, question=user_question, history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=current_user.subscription)
+    return render_template("index.html", answer=answer, question=user_question, history=history[:3], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=current_user.subscription)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
