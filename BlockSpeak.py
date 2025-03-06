@@ -515,6 +515,7 @@ def query():
     sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
     history = session.get("history", [])
+    # #WalletAnalytics - Check if it's a wallet address
     if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
         analytics = get_wallet_analytics(user_question)
         if "error" in analytics:
@@ -535,10 +536,10 @@ def query():
                 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                 <script>
                     fetch('/graph_data/{address}/{chain}')
-                        .then(response => response.json())
-                        .then(data => {{
-                            const ctx = document.getElementById('balanceChart').getContext('2d');
-                            const chainColors = {{
+                        .then(function(response) {{ return response.json(); }})
+                        .then(function(data) {{
+                            var ctx = document.getElementById('balanceChart').getContext('2d');
+                            var chainColors = {{
                                 'Bitcoin': '#f7931a',
                                 'Ethereum': '#3498db',
                                 'Solana': '#9945ff'
@@ -546,10 +547,10 @@ def query():
                             new Chart(ctx, {{
                                 type: 'line',
                                 data: {{
-                                    labels: data.map(d => d.date),
+                                    labels: data.map(function(d) {{ return d.date; }}),
                                     datasets: [{{
                                         label: 'Balance History',
-                                        data: data.map(d => d.balance),
+                                        data: data.map(function(d) {{ return d.balance; }}),
                                         borderColor: chainColors['{chain}'],
                                         tension: 0.1,
                                         fill: false
@@ -566,39 +567,44 @@ def query():
             """)
             wallet_data = {"address": address, "chain": chain}
         history.insert(0, {"question": user_question, "answer": Markup(f"Wallet Analytics ({analytics['chain']})<br>Balance: {analytics['balance']}<br>Transactions (30 days): {analytics['tx_count']}<br>Gas Spent: {analytics['gas_spent']}<br>Top Tokens: {analytics['top_tokens']}<br>Hot Wallet: {analytics['hot_wallet']}") if wallet_data else answer, "wallet_data": wallet_data})
+    # #PricePrediction - Handle price predictions for paid users
     elif "price_prediction" in normalized_question and current_user.subscription != "free":
-        if "bitcoin" in user_question:
+        user_question_lower = user_question.lower()  # Ensure case-insensitive matching
+        if "bitcoin" in user_question_lower or "btc" in user_question_lower:
             coin = "bitcoin"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            days = 7 if "7" not in user_question_lower else int(user_question_lower.split("in")[-1].split()[0])
             answer = predict_price(coin, days)
-        elif "ethereum" in user_question:
+        elif "ethereum" in user_question_lower or "eth" in user_question_lower:
             coin = "ethereum"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            days = 7 if "7" not in user_question_lower else int(user_question_lower.split("in")[-1].split()[0])
             answer = predict_price(coin, days)
-        elif "solana" in user_question:
+        elif "solana" in user_question_lower or "sol" in user_question_lower:
             coin = "solana"
-            days = 7 if "7" not in user_question else int(user_question.split("in")[-1].split()[0])
+            days = 7 if "7" not in user_question_lower else int(user_question_lower.split("in")[-1].split()[0])
             answer = predict_price(coin, days)
         else:
             answer = "Sorry, I can only predict prices for Bitcoin, Ethereum, or Solana."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #CurrentPrice - Fetch current prices
     elif "price" in normalized_question:
-        if "bitcoin" in normalized_question:
+        if "bitcoin" in user_question.lower() or "btc" in user_question.lower():
             price = get_crypto_price("bitcoin")
             answer = f"The current Bitcoin price is ${price} USD."
-        elif "ethereum" in normalized_question:
+        elif "ethereum" in user_question.lower() or "eth" in user_question.lower():
             price = get_crypto_price("ethereum")
             answer = f"The current Ethereum price is ${price} USD."
-        elif "solana" in normalized_question:
+        elif "solana" in user_question.lower() or "sol" in user_question.lower():
             price = get_crypto_price("solana")
             answer = f"The current Solana price is ${price} USD."
         else:
             answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #Trends - Fetch trending crypto
     elif "trending" in normalized_question or "buzz" in normalized_question:
         trends = get_trending_crypto()
         answer = Markup("Here is what's trending in crypto right now:<br>" + "<br>".join([f"{t['topic']}: {t['snippet']} (<a href='{t['link']}' target='_blank'>See Post Now</a>)" for t in trends]))
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #GasPrice - Fetch Ethereum gas price
     elif "gas" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -608,6 +614,7 @@ def query():
         else:
             answer = "Oops! Could not fetch gas price."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #TransactionCount - Fetch Ethereum block transactions
     elif "transactions" in normalized_question or "many" in normalized_question:
         block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         block_response = requests.post(eth_url, json=block_payload).json()
@@ -623,6 +630,7 @@ def query():
         else:
             answer = "Oops! Could not fetch block data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #EthereumBlock - Fetch latest Ethereum block
     elif "ethereum block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         response = requests.post(eth_url, json=payload).json()
@@ -632,6 +640,7 @@ def query():
         else:
             answer = "Oops! Could not fetch Ethereum block data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #BitcoinBlock - Fetch latest Bitcoin block
     elif "bitcoin block" in normalized_question:
         try:
             btc_response = requests.get("https://blockchain.info/latestblock").json()
@@ -644,6 +653,7 @@ def query():
             app.logger.error(f"Bitcoin block query failed: {str(e)}")
             answer = "Something went wrong with Bitcoin - try again!"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #SolanaBlock - Fetch latest Solana slot
     elif "solana block" in normalized_question:
         payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
         response = requests.post(sol_url, json=payload).json()
@@ -653,6 +663,7 @@ def query():
         else:
             answer = "Oops! Could not fetch Solana slot data."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    # #Fallback - Handle unknown queries or free-tier prediction attempts
     else:
         if "price_prediction" in normalized_question:
             answer = "Please upgrade to a paid plan to use price predictions."
