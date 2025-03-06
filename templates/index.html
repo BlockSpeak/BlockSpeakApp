@@ -21,13 +21,13 @@
             </form>
             {% if current_user.is_authenticated %}
             <p>Logged in as {{ current_user.id }} | <a href="{{ url_for('logout') }}">Logout</a></p>
-            {% if current_user.subscription == 'free' %}
+            {% if subscription == 'free' %}
             <form method="POST" action="/subscribe">
                 <button type="submit" name="plan" value="basic">Upgrade to Basic ($10/mo)</button>
                 <button type="submit" name="plan" value="pro">Upgrade to Pro ($50/mo)</button>
             </form>
             {% else %}
-            <p>Your plan: {{ current_user.subscription.capitalize() }}</p>
+            <p>Your plan: {{ subscription.capitalize() }}</p>
             {% endif %}
             {% else %}
             <p><a href="{{ url_for('login') }}">Login</a> to unlock premium features!</p>

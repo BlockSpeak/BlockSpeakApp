@@ -34,6 +34,7 @@ class User(UserMixin):
     def __init__(self, id):
         self.id = id
         self.subscription = "free"  # Default to free tier
+        self.stripe_customer_id = None  # Track Stripe customer for subscriptions
 
 users = {}  # Simple in-memory user store (replace with DB later)
 
@@ -376,11 +377,20 @@ def coin_graph(coin_id):
 def login():
     if request.method == "POST":
         user_id = request.form["user_id"]
+        if not "@" in user_id or not "." in user_id:  # Basic email check
+            return render_template("login.html", error="Please enter a valid email.")
         if user_id not in users:
-            users[user_id] = User(user_id)
+            # Create a new Stripe customer
+            try:
+                customer = stripe.Customer.create(email=user_id)
+                users[user_id] = User(user_id)
+                users[user_id].stripe_customer_id = customer["id"]
+            except stripe.error.StripeError as e:
+                app.logger.error(f"Stripe customer creation failed: {str(e)}")
+                return render_template("login.html", error="Login failed—try again later.")
         login_user(users[user_id])
         return redirect(url_for("home"))
-    return render_template("login.html")
+    return render_template("login.html", error=None)
 
 @app.route("/logout")
 @login_required
@@ -393,20 +403,25 @@ def logout():
 def subscribe():
     plan = request.form["plan"]
     if plan == "basic":
-        price_id = "price_1QzXTCKv6dFcpMYlxS712fan"  # Basic $10/mo
+        price_id = "price_1QzXTCKv6dFcpMYlxS712fan"  # Your Basic $10/mo
     elif plan == "pro":
-        price_id = "price_1QzXY5Kv6dFcpMYluAWw5638"  # Pro $50/mo
+        price_id = "price_1QzXY5Kv6dFcpMYluAWw5638"  # Your Pro $50/mo
     else:
         return "Invalid plan", 400
     
-    checkout_session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        line_items=[{"price": price_id, "quantity": 1}],
-        mode="subscription",
-        success_url=url_for("home", _external=True),
-        cancel_url=url_for("home", _external=True),
-    )
-    current_user.subscription = plan
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            customer=current_user.stripe_customer_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="subscription",
+            success_url=url_for("home", _external=True),
+            cancel_url=url_for("home", _external=True),
+        )
+        current_user.subscription = plan
+    except stripe.error.StripeError as e:
+        app.logger.error(f"Stripe checkout failed: {str(e)}")
+        return "Subscription failed—try again later.", 500
     return redirect(checkout_session.url)
 
 @app.route("/")
@@ -414,7 +429,8 @@ def home():
     session["history"] = session.get("history", [])
     news_items = get_news_items()
     top_coins = get_top_coins()
-    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY)
+    subscription = current_user.subscription if current_user.is_authenticated else "free"
+    return render_template("index.html", history=session["history"], news_items=news_items, trends=get_trending_crypto(), x_profiles=get_x_profiles(), top_coins=top_coins, stripe_key=STRIPE_PUBLISHABLE_KEY, subscription=subscription)
 
 @app.route("/about")
 def about():
