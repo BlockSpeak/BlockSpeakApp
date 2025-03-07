@@ -416,6 +416,10 @@ def coin_graph(coin_id):
     graph_data = get_coin_graph(coin_id)
     return jsonify(graph_data)
 
+@app.route('/marketplace')
+def marketplace():
+    return render_template('marketplace.html')
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
