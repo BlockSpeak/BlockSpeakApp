@@ -1,184 +1,172 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>BlockSpeak Pro - Crypto Analytics</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1><a href="{{ url_for('home') }}" class="logo">BlockSpeak Pro</a></h1>
-            <nav>
-                <a href="{{ url_for('how_it_works') }}">How It Works</a>
-                <a href="{{ url_for('about') }}">About</a>
-            </nav>
-        </header>
-        <section class="hero">
-            <p>Ask anything about blockchain - wallet analytics, prices, trends, and more.</p>
-            <form method="POST" action="/query" class="query-form">
-                <input type="text" name="question" placeholder="Paste a wallet address or ask a question...">
-                <button type="submit">Analyze</button>
-            </form>
-            {% if current_user.is_authenticated %}
-            <p>Logged in as {{ current_user.email }} | <a href="{{ url_for('logout') }}">Logout</a></p>
-            {% if current_user.subscription == 'free' %}
-            <form method="POST" action="/subscribe">
-                <button type="submit" name="plan" value="basic">Upgrade to Basic ($10/mo)</button>
-                <button type="submit" name="plan" value="pro">Upgrade to Pro ($50/mo)</button>
-            </form>
-            {% else %}
-            <p>Your plan: {{ current_user.subscription.capitalize() }}</p>
-            {% endif %}
-            {% else %}
-            <p><a href="{{ url_for('login') }}">Login</a> or <a href="{{ url_for('register') }}">Register</a> to unlock premium features!</p>
-            {% endif %}
-        </section>
-        {% if answer %}
-        <section class="answer-card">
-            <h2>Result</h2>
-            <p class="question"><strong>{{ question }}</strong></p>
-            <div class="answer">{{ answer | safe }}</div>
-        </section>
+{% extends "base.html" %}
+{% block title %}BlockSpeak Pro - Crypto Analytics{% endblock %}
+{% block content %}
+<div class="container">
+    <section class="hero">
+        <p>Ask anything about blockchain - wallet analytics, prices, trends, and more.</p>
+        <form method="POST" action="/query" class="query-form">
+            <input type="text" name="question" placeholder="Paste a wallet address or ask a question...">
+            <button type="submit">Analyze</button>
+        </form>
+        {% if current_user.is_authenticated %}
+        <p>Logged in as {{ current_user.email }} | <a href="{{ url_for('logout') }}">Logout</a></p>
+        {% if current_user.subscription == 'free' %}
+        <form method="POST" action="/subscribe">
+            <button type="submit" name="plan" value="basic">Upgrade to Basic ($10/mo)</button>
+            <button type="submit" name="plan" value="pro">Upgrade to Pro ($50/mo)</button>
+        </form>
+        {% else %}
+        <p>Your plan: {{ current_user.subscription.capitalize() }}</p>
         {% endif %}
-        <section class="coin-table">
-            <h2>Top Crypto Coins</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Coin</th>
-                        <th>Price</th>
-                        <th>Market Cap</th>
-                        <th>24h Change</th>
-                        <th>Graph (7d)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for coin in top_coins %}
-                    <tr>
-                        <td>{{ loop.index }}</td>
-                        <td>
-                            <img src="{{ coin.image }}" alt="{{ coin.name }}" width="24" height="24">
-                            {{ coin.name }}
-                        </td>
-                        <td>${{ coin.price }}</td>
-                        <td>${{ coin.market_cap }}</td>
-                        <td class="{{ 'positive' if coin.change > 0 else 'negative' }}">{{ coin.change }}%</td>
-                        <td>
-                            <canvas id="chart-{{ coin.id }}-{{ loop.index }}" width="100" height="50"></canvas>
-                            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                            <script>
-                                fetch('/coin_graph/{{ coin.id }}')
-                                    .then(function(response) {
-                                        return response.json();
-                                    })
-                                    .then(function(data) {
-                                        var ctx = document.getElementById('chart-{{ coin.id }}-{{ loop.index }}').getContext('2d');
-                                        new Chart(ctx, {
-                                            type: 'line',
-                                            data: {
-                                                labels: data.dates,
-                                                datasets: [{
-                                                    data: data.prices,
-                                                    borderColor: '{{ coin.graph_color }}',
-                                                    borderWidth: 1,
-                                                    fill: false,
-                                                    pointRadius: 0
-                                                }]
+        {% else %}
+        <p><a href="{{ url_for('login') }}">Login</a> or <a href="{{ url_for('register') }}">Register</a> to unlock premium features!</p>
+        {% endif %}
+    </section>
+    {% if answer %}
+    <section class="answer-card">
+        <h2>Result</h2>
+        <p class="question"><strong>{{ question }}</strong></p>
+        <div class="answer">{{ answer | safe }}</div>
+    </section>
+    {% endif %}
+    <section class="coin-table">
+        <h2>Top Crypto Coins</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Coin</th>
+                    <th>Price</th>
+                    <th>Market Cap</th>
+                    <th>24h Change</th>
+                    <th>Graph (7d)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for coin in top_coins %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        <img src="{{ coin.image }}" alt="{{ coin.name }}" width="24" height="24">
+                        {{ coin.name }}
+                    </td>
+                    <td>${{ coin.price }}</td>
+                    <td>${{ coin.market_cap }}</td>
+                    <td class="{{ 'positive' if coin.change > 0 else 'negative' }}">{{ coin.change }}%</td>
+                    <td>
+                        <canvas id="chart-{{ coin.id }}-{{ loop.index }}" width="100" height="50"></canvas>
+                        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                        <script>
+                            fetch('/coin_graph/{{ coin.id }}')
+                                .then(function(response) {
+                                    return response.json();
+                                })
+                                .then(function(data) {
+                                    var ctx = document.getElementById('chart-{{ coin.id }}-{{ loop.index }}').getContext('2d');
+                                    new Chart(ctx, {
+                                        type: 'line',
+                                        data: {
+                                            labels: data.dates,
+                                            datasets: [{
+                                                data: data.prices,
+                                                borderColor: '{{ coin.graph_color }}',
+                                                borderWidth: 1,
+                                                fill: false,
+                                                pointRadius: 0
+                                            }]
+                                        },
+                                        options: {
+                                            scales: {
+                                                x: { display: false },
+                                                y: { display: false }
                                             },
-                                            options: {
-                                                scales: {
-                                                    x: { display: false },
-                                                    y: { display: false }
-                                                },
-                                                plugins: {
-                                                    legend: { display: false },
-                                                    tooltip: { enabled: false }
-                                                }
+                                            plugins: {
+                                                legend: { display: false },
+                                                tooltip: { enabled: false }
                                             }
-                                        });
+                                        }
                                     });
-                            </script>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </section>
-        {% if history %}
-        <section class="history-card">
-            <h2>Recent Queries</h2>
-            {% for entry in history %}
-            <div class="history-item">
-                <strong>{{ entry.question }}</strong>:
-                <span>{{ entry.answer | safe }}</span>
-                {% if entry.wallet_data %}
-                <canvas id="historyChart-{{ loop.index }}" width="400" height="200"></canvas>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-                <script>
-                    fetch('/graph_data/{{ entry.wallet_data.address }}/{{ entry.wallet_data.chain }}')
-                        .then(function(response) {
-                            return response.json();
-                        })
-                        .then(function(data) {
-                            var ctx = document.getElementById('historyChart-{{ loop.index }}').getContext('2d');
-                            var chainColors = {
-                                'Bitcoin': '#f7931a',
-                                'Ethereum': '#3498db',
-                                'Solana': '#9945ff'
-                            };
-                            new Chart(ctx, {
-                                type: 'line',
-                                data: {
-                                    labels: data.map(function(d) { return d.date; }),
-                                    datasets: [{
-                                        label: 'Balance History',
-                                        data: data.map(function(d) { return d.balance; }),
-                                        borderColor: chainColors['{{ entry.wallet_data.chain }}'],
-                                        tension: 0.1,
-                                        fill: false
-                                    }]
-                                },
-                                options: {
-                                    scales: {
-                                        y: { beginAtZero: true }
-                                    },
-                                    plugins: {
-                                        tooltip: { mode: 'index', intersect: false }
-                                    }
-                                }
-                            });
-                        });
-                </script>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </section>
-        {% endif %}
-        <section class="trends-card">
-            <h2>Trending in Crypto</h2>
-            {% for trend in trends %}
-            <div class="trend-item">
-                <strong>{{ trend.topic }}</strong>: {{ trend.snippet }} <a href="{{ trend.link }}" target="_blank">See Post</a>
-            </div>
-            {% endfor %}
-        </section>
-        <section class="news-card">
-            <h2>Latest Crypto News</h2>
-            {% for item in news_items %}
-            <div class="news-item">
-                <a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
-            </div>
-            {% endfor %}
-        </section>
-        <footer>
-            <h3>Learn More on X</h3>
-            <div class="x-profiles">
-                {% for profile in x_profiles %}
-                <a href="{{ profile.link }}" target="_blank" class="profile-item">{{ profile.name }}</a>
+                                });
+                        </script>
+                    </td>
+                </tr>
                 {% endfor %}
-            </div>
-        </footer>
-    </div>
-</body>
-</html>
+            </tbody>
+        </table>
+    </section>
+    {% if history %}
+    <section class="history-card">
+        <h2>Recent Queries</h2>
+        {% for entry in history %}
+        <div class="history-item">
+            <strong>{{ entry.question }}</strong>:
+            <span>{{ entry.answer | safe }}</span>
+            {% if entry.wallet_data %}
+            <canvas id="historyChart-{{ loop.index }}" width="400" height="200"></canvas>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+                fetch('/graph_data/{{ entry.wallet_data.address }}/{{ entry.wallet_data.chain }}')
+                    .then(function(response) {
+                        return response.json();
+                    })
+                    .then(function(data) {
+                        var ctx = document.getElementById('historyChart-{{ loop.index }}').getContext('2d');
+                        var chainColors = {
+                            'Bitcoin': '#f7931a',
+                            'Ethereum': '#3498db',
+                            'Solana': '#9945ff'
+                        };
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: data.map(function(d) { return d.date; }),
+                                datasets: [{
+                                    label: 'Balance History',
+                                    data: data.map(function(d) { return d.balance; }),
+                                    borderColor: chainColors['{{ entry.wallet_data.chain }}'],
+                                    tension: 0.1,
+                                    fill: false
+                                }]
+                            },
+                            options: {
+                                scales: {
+                                    y: { beginAtZero: true }
+                                },
+                                plugins: {
+                                    tooltip: { mode: 'index', intersect: false }
+                                }
+                            }
+                        });
+                    });
+            </script>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+    <section class="trends-card">
+        <h2>Trending in Crypto</h2>
+        {% for trend in trends %}
+        <div class="trend-item">
+            <strong>{{ trend.topic }}</strong>: {{ trend.snippet }} <a href="{{ trend.link }}" target="_blank">See Post</a>
+        </div>
+        {% endfor %}
+    </section>
+    <section class="news-card">
+        <h2>Latest Crypto News</h2>
+        {% for item in news_items %}
+        <div class="news-item">
+            <a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
+        </div>
+        {% endfor %}
+    </section>
+    <footer>
+        <h3>Learn More on X</h3>
+        <div class="x-profiles">
+            {% for profile in x_profiles %}
+            <a href="{{ profile.link }}" target="_blank" class="profile-item">{{ profile.name }}</a>
+            {% endfor %}
+        </div>
+    </footer>
+</div>
+{% endblock %}
