@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import Web3 from 'web3';
 import './App.css';
 
 function App() {
@@ -13,12 +12,19 @@ function App() {
             return;
         }
         try {
-            const web3 = new Web3(window.ethereum);
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             const address = accounts[0];
+            console.log('Address:', address);
             const nonce = await fetch('https://blockspeak.onrender.com/nonce').then(res => res.text());
+            if (!nonce) throw new Error('No nonce received');
+            console.log('Nonce:', nonce);
             const message = `Log in to BlockSpeak: ${nonce}`;
-            const signature = await web3.eth.personal.sign(message, address);
+            console.log('Message to sign:', message);
+            const signature = await window.ethereum.request({
+                method: 'personal_sign',
+                params: [message, address]
+            });
+            console.log('Signature:', signature);
             const response = await fetch('https://blockspeak.onrender.com/login/metamask', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -26,11 +32,14 @@ function App() {
             });
             if (response.ok) {
                 setAccount(address);
+                console.log('Login successful:', address);
             } else {
-                alert('Login failed');
+                const errorText = await response.text();
+                throw new Error(`Login failed: ${errorText}`);
             }
         } catch (error) {
             console.error('MetaMask login error:', error);
+            alert('Login failed—check console for details');
         }
     };
 
@@ -47,7 +56,7 @@ function App() {
                 body: new URLSearchParams({ contract_request: contractRequest })
             });
             const text = await response.text();
-            setContractResult(text); // For now, just display raw HTML; we'll parse it later
+            setContractResult(text);
         } catch (error) {
             console.error('Contract creation error:', error);
             setContractResult('Error creating contract');
