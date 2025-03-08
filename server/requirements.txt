@@ -1,0 +1,11 @@
+flask
+requests
+openai
+markupsafe
+gunicorn
+feedparser
+stripe
+flask-login
+Werkzeug  # For password hashing
+web3.py
+flask-cors
