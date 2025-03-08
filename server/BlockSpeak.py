@@ -135,9 +135,13 @@ def get_x_profiles():
     ]
 
 def get_news_items():
-    feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
     try:
-        feed = feedparser.parse("https://coinjournal.net/feed/", timeout=10)  # 10-second timeout
+        response = requests.get("https://coinjournal.net/feed/", headers=headers, timeout=10)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
         app.logger.info(f"RSS Feed Status: {str(feed.status)}")
         app.logger.info(f"RSS Feed Entries: {str(len(feed.entries))}")
         if feed.status != 200 or not feed.entries:
