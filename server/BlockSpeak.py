@@ -18,13 +18,18 @@ from web3 import Web3
 import uuid
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")  # Use env var, fallback to default
 app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_FILE_DIR"] = "/tmp/flask_session"  # Explicit dir for Render
+app.config["SESSION_PERMANENT"] = False  # Sessions expire when browser closes
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 
 w3 = Web3()
 
 logging.basicConfig(level=logging.INFO)
+
+# Ensure session directory exists on Render
+os.makedirs("/tmp/flask_session", exist_ok=True)
 
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -569,12 +574,14 @@ def login_metamask():
         return jsonify({"error": "Missing address or signature"}), 400
     
     nonce = session.pop('nonce', None)
+    app.logger.info(f"Received nonce from session: {nonce}")  # Log what we get
     if not nonce:
         return jsonify({"error": "Invalid or expired nonce"}), 400
     
     message = encode_defunct(text=f"Log in to BlockSpeak: {nonce}")
     try:
         recovered_address = w3.eth.account.recover_message(message, signature=signature)
+        app.logger.info(f"Recovered address: {recovered_address}, Expected: {address}")
         if recovered_address.lower() == address.lower():
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
