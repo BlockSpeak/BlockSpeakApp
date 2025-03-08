@@ -21,8 +21,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 app.config["SESSION_TYPE"] = "memory"
 app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # Allow cross-origin from localhost
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Allow cross-origin from localhost
+app.config["SESSION_COOKIE_SECURE"] = True       # Cookie is only sent over HTTPS
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
 
 w3 = Web3()
 

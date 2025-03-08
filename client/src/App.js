@@ -15,7 +15,8 @@ function App() {
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             const address = accounts[0];
             console.log('Address:', address);
-            const nonce = await fetch('https://blockspeak.onrender.com/nonce').then(res => res.text());
+            // Include credentials in the nonce fetch
+            const nonce = await fetch('https://blockspeak.onrender.com/nonce', { credentials: 'include' }).then(res => res.text());
             if (!nonce) throw new Error('No nonce received');
             console.log('Nonce:', nonce);
             const message = `Log in to BlockSpeak: ${nonce}`;
@@ -25,8 +26,10 @@ function App() {
                 params: [message, address]
             });
             console.log('Signature:', signature);
+            // Include credentials in the login fetch
             const response = await fetch('https://blockspeak.onrender.com/login/metamask', {
                 method: 'POST',
+                credentials: 'include',  // Ensures cookies are sent
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ address, signature })
             });
@@ -50,8 +53,10 @@ function App() {
             return;
         }
         try {
+            // Include credentials in the create contract fetch
             const response = await fetch('https://blockspeak.onrender.com/create_contract', {
                 method: 'POST',
+                credentials: 'include',  // Ensures session cookie is sent
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ contract_request: contractRequest })
             });
