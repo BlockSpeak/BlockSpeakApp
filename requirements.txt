@@ -1,9 +1,0 @@
-flask
-requests
-openai
-markupsafe
-gunicorn
-feedparser
-stripe
-flask-login
-Werkzeug  # For password hashing
