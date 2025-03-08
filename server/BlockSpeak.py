@@ -146,24 +146,23 @@ def get_x_profiles():
 
 def get_news_items():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-    try:
-        response = requests.get("https://coinjournal.net/feed/", headers=headers, timeout=10)
-        response.raise_for_status()
-        feed = feedparser.parse(response.content)
-        # Log raw response for debugging if needed
-        app.logger.debug(f"RSS Response: {response.text[:200]}")
-        # Check if feed is valid
-        if not hasattr(feed, 'entries') or not feed.entries:
-            app.logger.error("RSS feed has no entries")
-            return [{"title": "News unavailable - check back later!", "link": "#"}]
-        app.logger.info(f"RSS Feed Entries: {len(feed.entries)}")
-        return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
-    except requests.RequestException as e:
-        app.logger.error(f"RSS fetch failed: {str(e)}")
-        return [{"title": "News unavailable - check back later!", "link": "#"}]
-    except AttributeError as e:
-        app.logger.error(f"RSS parsing failed: {str(e)}")
-        return [{"title": "News unavailable - check back later!", "link": "#"}]
+    urls = [
+        "https://coinjournal.net/feed/",  # Primary
+        "https://cointelegraph.com/rss"   # Fallback
+    ]
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=15)  # Bump to 15s
+            response.raise_for_status()
+            feed = feedparser.parse(response.content)
+            if not hasattr(feed, 'entries') or not feed.entries:
+                app.logger.error(f"RSS feed has no entries from {url}")
+                continue
+            app.logger.info(f"RSS Feed Entries from {url}: {len(feed.entries)}")
+            return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
+        except requests.RequestException as e:
+            app.logger.error(f"RSS fetch failed for {url}: {str(e)}")
+    return [{"title": "News unavailable - check back later!", "link": "#"}]
 
 def get_wallet_analytics(address):
     analytics = {}
