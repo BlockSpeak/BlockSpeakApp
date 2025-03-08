@@ -7,5 +7,5 @@ feedparser
 stripe
 flask-login
 Werkzeug  # For password hashing
-web3.py
+web3
 flask-cors
