@@ -136,12 +136,16 @@ def get_x_profiles():
 
 def get_news_items():
     feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    feed = feedparser.parse("https://coinjournal.net/feed/")
-    app.logger.info(f"RSS Feed Status: {str(feed.status)}")
-    app.logger.info(f"RSS Feed Entries: {str(len(feed.entries))}")
-    if feed.status != 200 or not feed.entries:
+    try:
+        feed = feedparser.parse("https://coinjournal.net/feed/", timeout=10)  # 10-second timeout
+        app.logger.info(f"RSS Feed Status: {str(feed.status)}")
+        app.logger.info(f"RSS Feed Entries: {str(len(feed.entries))}")
+        if feed.status != 200 or not feed.entries:
+            return [{"title": "News unavailable - check back later!", "link": "#"}]
+        return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
+    except Exception as e:
+        app.logger.error(f"RSS fetch failed: {str(e)}")
         return [{"title": "News unavailable - check back later!", "link": "#"}]
-    return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
 
 def get_wallet_analytics(address):
     analytics = {}
