@@ -13,11 +13,16 @@ import logging
 import stripe
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from eth_account.messages import encode_defunct
+from web3 import Web3
+import uuid
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 app.config["SESSION_TYPE"] = "filesystem"
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+
+w3 = Web3()
 
 logging.basicConfig(level=logging.INFO)
 
@@ -547,6 +552,51 @@ def about():
 @app.route("/how-it-works")
 def how_it_works():
     return render_template("how_it_works.html")
+
+@app.route('/nonce')
+def get_nonce():
+    nonce = str(uuid.uuid4())
+    session['nonce'] = nonce
+    app.logger.info(f"Generated nonce for session: {nonce}")
+    return nonce
+
+@app.route('/login/metamask', methods=['POST'])
+def login_metamask():
+    data = request.json
+    address = data.get('address')
+    signature = data.get('signature')
+    if not address or not signature:
+        return jsonify({"error": "Missing address or signature"}), 400
+    
+    nonce = session.pop('nonce', None)
+    if not nonce:
+        return jsonify({"error": "Invalid or expired nonce"}), 400
+    
+    message = encode_defunct(text=f"Log in to BlockSpeak: {nonce}")
+    try:
+        recovered_address = w3.eth.account.recover_message(message, signature=signature)
+        if recovered_address.lower() == address.lower():
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (address,))
+            user_data = c.fetchone()
+            if not user_data:
+                # Register new MetaMask user
+                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, 'metamask'))
+                conn.commit()
+                user = User(address)
+            else:
+                user = User(user_data[0], user_data[1], user_data[2], user_data[3])
+            login_user(user)
+            conn.close()
+            app.logger.info(f"MetaMask login successful for {address}")
+            return jsonify({"success": True, "address": address})
+        else:
+            app.logger.error(f"Signature verification failed for {address}")
+            return jsonify({"error": "Invalid signature"}), 401
+    except Exception as e:
+        app.logger.error(f"MetaMask login error: {str(e)}")
+        return jsonify({"error": "Login failed"}), 500
 
 @app.route("/query", methods=["POST"])
 @login_required
