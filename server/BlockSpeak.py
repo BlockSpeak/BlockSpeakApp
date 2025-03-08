@@ -557,6 +557,11 @@ def about():
 def how_it_works():
     return render_template("how_it_works.html")
 
+@app.before_request
+def start_session():
+    if 'nonce' not in session:  # Force session init
+        session['nonce'] = None
+
 @app.route('/nonce')
 def get_nonce():
     nonce = str(uuid.uuid4())
