@@ -608,6 +608,18 @@ def login_metamask():
         app.logger.error(f"MetaMask login error: {str(e)}")
         return jsonify({"error": "Login failed"}), 500
 
+@app.route('/create_contract', methods=['POST'])
+@login_required  # Ensures user is logged in
+def create_contract():
+    contract_request = request.form.get('contract_request')
+    if not contract_request:
+        app.logger.error("No contract request provided")
+        return "Error: No contract request provided", 400
+    app.logger.info(f"Received contract request from {current_user.email}: {contract_request}")
+    # Placeholder logic—replace with your actual contract creation
+    response_text = f"Contract created: {contract_request}"
+    return response_text  # Returns text to display in UI
+
 @app.route("/query", methods=["POST"])
 @login_required
 def query():
