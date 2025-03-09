@@ -23,7 +23,7 @@ app.config["SESSION_TYPE"] = "memory"
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Allow cross-origin from localhost
 app.config["SESSION_COOKIE_SECURE"] = True       # Cookie is only sent over HTTPS
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": "http://localhost:3000"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak-client.onrender.com"]}})
 
 w3 = Web3()
 
