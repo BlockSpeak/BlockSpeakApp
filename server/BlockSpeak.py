@@ -25,7 +25,7 @@ app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Allow cross-origin from localh
 app.config["SESSION_COOKIE_SECURE"] = True       # Cookie is only sent over HTTPS
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak-client.onrender.com"]}})
 
-w3 = Web3()
+w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-sepolia.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
 
 logging.basicConfig(level=logging.INFO)
 
