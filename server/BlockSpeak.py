@@ -622,7 +622,7 @@ def create_contract():
         return "Error: Blockchain connection failed", 500
 
     # Placeholder: Parse "Send 1 ETH to Bob every Friday"
-    recipient = "0xRecipientAddressHere"  # Replace with Bob’s address
+    recipient = "0x81a02914d10d94F746Ca193269857819deB9e015"  # Replace with Bob’s address
     sender_private_key = os.getenv("PRIVATE_KEY")  # Add to Render env vars
     sender_address = current_user.email  # Your MetaMask address
 
