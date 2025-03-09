@@ -15,6 +15,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from eth_account.messages import encode_defunct
 from web3 import Web3
+from web3 import Web3 as Web3Py
 import uuid
 
 app = Flask(__name__)
@@ -609,16 +610,42 @@ def login_metamask():
         return jsonify({"error": "Login failed"}), 500
 
 @app.route('/create_contract', methods=['POST'])
-@login_required  # Ensures user is logged in
+@login_required
 def create_contract():
     contract_request = request.form.get('contract_request')
     if not contract_request:
-        app.logger.error("No contract request provided")
         return "Error: No contract request provided", 400
     app.logger.info(f"Received contract request from {current_user.email}: {contract_request}")
-    # Placeholder logic—replace with your actual contract creation
-    response_text = f"Contract created: {contract_request}"
-    return response_text  # Returns text to display in UI
+
+    # Connect to Ethereum (e.g., Alchemy)
+    w3_py = Web3Py(Web3Py.HTTPProvider(f"https://eth-sepolia.g.alchemy.com/v2/{ALCHEMY_API_KEY}"))
+    if not w3_py.is_connected():
+        return "Error: Blockchain connection failed", 500
+
+    # Placeholder: Parse "Send 1 ETH to Bob every Friday"
+    recipient = "0xRecipientAddressHere"  # Replace with Bob’s address
+    sender_private_key = os.getenv("PRIVATE_KEY")  # Add to Render env vars
+    sender_address = current_user.email  # Your MetaMask address
+
+    # Contract ABI and bytecode (from Hardhat compilation)
+    with open("path/to/compiled/RecurringPayment.json") as f:
+        contract_data = json.load(f)
+    abi = contract_data["abi"]
+    bytecode = contract_data["bytecode"]
+
+    # Deploy contract
+    contract = w3_py.eth.contract(abi=abi, bytecode=bytecode)
+    tx = contract.constructor(recipient).build_transaction({
+        "from": sender_address,
+        "nonce": w3_py.eth.get_transaction_count(sender_address),
+        "gas": 2000000,
+        "gasPrice": w3_py.to_wei("50", "gwei")
+    })
+    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+    tx_hash = w3_py.eth.send_raw_transaction(signed_tx.rawTransaction)
+    tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+
+    return f"Contract deployed at: {tx_receipt.contractAddress}"
 
 @app.route("/query", methods=["POST"])
 @login_required

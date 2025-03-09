@@ -31,9 +31,10 @@
     <button id="connectButton">Connect Wallet</button>
     <div id="skills"></div>
 
-    <script src="{{ url_for('static', filename='web3.min.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web3/dist/web3.min.js"></script>
+
     <script>
-        const contractAddress = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9";
+        const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
         const abi = [
             {
                 "inputs": [
@@ -150,6 +151,38 @@
                 "type": "error"
             },
             {
+                "inputs": [],
+                "name": "InsufficientPayment",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "owner",
+                        "type": "address"
+                    }
+                ],
+                "name": "OwnableInvalidOwner",
+                "type": "error"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "account",
+                        "type": "address"
+                    }
+                ],
+                "name": "OwnableUnauthorizedAccount",
+                "type": "error"
+            },
+            {
+                "inputs": [],
+                "name": "TokenDoesNotExist",
+                "type": "error"
+            },
+            {
                 "anonymous": false,
                 "inputs": [
                     {
@@ -203,6 +236,25 @@
                 "anonymous": false,
                 "inputs": [
                     {
+                        "indexed": true,
+                        "internalType": "address",
+                        "name": "previousOwner",
+                        "type": "address"
+                    },
+                    {
+                        "indexed": true,
+                        "internalType": "address",
+                        "name": "newOwner",
+                        "type": "address"
+                    }
+                ],
+                "name": "OwnershipTransferred",
+                "type": "event"
+            },
+            {
+                "anonymous": false,
+                "inputs": [
+                    {
                         "indexed": false,
                         "internalType": "uint256",
                         "name": "tokenId",
@@ -211,8 +263,20 @@
                     {
                         "indexed": false,
                         "internalType": "address",
+                        "name": "seller",
+                        "type": "address"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "address",
                         "name": "buyer",
                         "type": "address"
+                    },
+                    {
+                        "indexed": false,
+                        "internalType": "uint256",
+                        "name": "totalAmount",
+                        "type": "uint256"
                     },
                     {
                         "indexed": false,
@@ -453,6 +517,19 @@
                 "type": "function"
             },
             {
+                "inputs": [],
+                "name": "owner",
+                "outputs": [
+                    {
+                        "internalType": "address",
+                        "name": "",
+                        "type": "address"
+                    }
+                ],
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
                 "inputs": [
                     {
                         "internalType": "uint256",
@@ -482,6 +559,13 @@
                     }
                 ],
                 "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [],
+                "name": "renounceOwnership",
+                "outputs": [],
+                "stateMutability": "nonpayable",
                 "type": "function"
             },
             {
@@ -664,6 +748,19 @@
                 "outputs": [],
                 "stateMutability": "nonpayable",
                 "type": "function"
+            },
+            {
+                "inputs": [
+                    {
+                        "internalType": "address",
+                        "name": "newOwner",
+                        "type": "address"
+                    }
+                ],
+                "name": "transferOwnership",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
             }
         ];
         let web3, contract, account;
@@ -703,9 +800,9 @@
                     const skillDiv = document.createElement("div");
                     skillDiv.className = "skill";
                     skillDiv.innerHTML = `
-                <p>ID: ${tokenId} | ${skill.name} | Price: ${web3.utils.fromWei(skill.price, "ether")} ETH | Owner: ${skill.owner}</p>
-                <button onclick="buySkill(${tokenId}, '${skill.price}')">Buy</button>
-            `;
+                    <p>ID: ${tokenId} | ${skill.name} | Price: ${web3.utils.fromWei(skill.price, "ether")} ETH | Owner: ${skill.owner}</p>
+                    <button onclick="buySkill(${tokenId}, '${skill.price}')">Buy</button>
+                `;
                     skillsDiv.appendChild(skillDiv);
                     tokenId++;
                 }
