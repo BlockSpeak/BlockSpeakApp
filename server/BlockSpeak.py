@@ -14,8 +14,7 @@ import stripe
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from eth_account.messages import encode_defunct
-from web3 import Web3
-from web3 import Web3 as Web3Py
+from web3 import Web3 as Web3Py  # For blockchain (web3.py)
 import uuid
 
 app = Flask(__name__)
