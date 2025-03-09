@@ -9,4 +9,3 @@ flask-login
 Werkzeug  # For password hashing
 web3
 flask-cors
-web3.py
