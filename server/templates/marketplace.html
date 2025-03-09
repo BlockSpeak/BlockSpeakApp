@@ -31,8 +31,7 @@
     <button id="connectButton">Connect Wallet</button>
     <div id="skills"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/web3/dist/web3.min.js"></script>
-
+    <script src="{{ url_for('static', filename='web3.min.js') }}"></script>
     <script>
         const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
         const abi = [
@@ -800,9 +799,9 @@
                     const skillDiv = document.createElement("div");
                     skillDiv.className = "skill";
                     skillDiv.innerHTML = `
-                    <p>ID: ${tokenId} | ${skill.name} | Price: ${web3.utils.fromWei(skill.price, "ether")} ETH | Owner: ${skill.owner}</p>
-                    <button onclick="buySkill(${tokenId}, '${skill.price}')">Buy</button>
-                `;
+                <p>ID: ${tokenId} | ${skill.name} | Price: ${web3.utils.fromWei(skill.price, "ether")} ETH | Owner: ${skill.owner}</p>
+                <button onclick="buySkill(${tokenId}, '${skill.price}')">Buy</button>
+            `;
                     skillsDiv.appendChild(skillDiv);
                     tokenId++;
                 }

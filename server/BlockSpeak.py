@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+import re
 import json
 import os.path
 import sqlite3
@@ -17,6 +19,15 @@ from eth_account.messages import encode_defunct
 from web3 import Web3 as Web3Py  # For blockchain (web3.py)
 import uuid
 
+load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/server/.env")
+
+# Network switch: hardhat for local testing, sepolia for live
+NETWORK = os.getenv("NETWORK", "hardhat")  # Default to hardhat, set "sepolia" on Render
+if NETWORK == "hardhat":
+    w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))
+else:  # sepolia
+    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-sepolia.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
+
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 app.config["SESSION_TYPE"] = "memory"
@@ -24,8 +35,6 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Allow cross-origin from localhost
 app.config["SESSION_COOKIE_SECURE"] = True       # Cookie is only sent over HTTPS
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak-client.onrender.com"]}})
-
-w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-sepolia.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
 
 logging.basicConfig(level=logging.INFO)
 
@@ -611,40 +620,95 @@ def login_metamask():
 @app.route('/create_contract', methods=['POST'])
 @login_required
 def create_contract():
+    """
+    Handle contract creation requests from the frontend.
+    - Currently supports "Send 1 ETH to Bob every Friday" with RecurringPayment.sol.
+    - Scalable to add more contract types (e.g., SkillNFT) or store deployments in a DB.
+    - Switches between Hardhat (local) and Sepolia (Render) via NETWORK env var.
+    """
     contract_request = request.form.get('contract_request')
     if not contract_request:
         return "Error: No contract request provided", 400
     app.logger.info(f"Received contract request from {current_user.email}: {contract_request}")
 
-    # Connect to Ethereum (e.g., Alchemy)
-    w3_py = Web3Py(Web3Py.HTTPProvider(f"https://eth-sepolia.g.alchemy.com/v2/{ALCHEMY_API_KEY}"))
+    # Use global w3 (set at top based on NETWORK: hardhat or sepolia)
+    w3_py = w3
     if not w3_py.is_connected():
+        app.logger.error(f"Blockchain connection failed on {NETWORK}")
         return "Error: Blockchain connection failed", 500
 
-    # Placeholder: Parse "Send 1 ETH to Bob every Friday"
-    recipient = "0x81a02914d10d94F746Ca193269857819deB9e015"  # Replace with Bob’s address
-    sender_private_key = os.getenv("PRIVATE_KEY")  # Add to Render env vars
-    sender_address = current_user.email  # Your MetaMask address
+    # Define sender and recipient based on NETWORK
+    if NETWORK == "hardhat":
+        # Hardhat test accounts for local simulation
+        sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"  # Hardhat #0 (You)
+        sender_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+        recipient = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"  # Hardhat #1 (Bob)
+    else:  # sepolia
+        # Real wallets for live deployment
+        sender_address = current_user.email  # Your real wallet: 0x37558169...
+        sender_private_key = os.getenv("PRIVATE_KEY")  # From Render env vars
+        if not sender_private_key:
+            app.logger.error("No PRIVATE_KEY set in environment")
+            return "Error: Server misconfigured - missing PRIVATE_KEY", 500
+        recipient = "0x81a02914d10d94F746Ca193269857819deB9e015"  # Bobs real wallet
 
-    # Contract ABI and bytecode (from Hardhat compilation)
-    with open("path/to/compiled/RecurringPayment.json") as f:
-        contract_data = json.load(f)
-    abi = contract_data["abi"]
-    bytecode = contract_data["bytecode"]
+    # Check if request matches supported contract type
+    if "Send 1 ETH to Bob every Friday" in contract_request:
+        # Load compiled contract (ensure RecurringPayment.sol is compiled)
+        contract_path = "skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
+        app.logger.info(f"Looking for contract at: {os.path.abspath(contract_path)}")  # Debug
+        try:
+            with open(contract_path) as f:
+                contract_data = json.load(f)
+        except FileNotFoundError:
+            app.logger.error(f"Contract file not found at {contract_path}")
+            return "Error: Contract file missing - compile RecurringPayment.sol", 500
+        abi = contract_data["abi"]
+        bytecode = contract_data["bytecode"]
 
-    # Deploy contract
-    contract = w3_py.eth.contract(abi=abi, bytecode=bytecode)
-    tx = contract.constructor(recipient).build_transaction({
-        "from": sender_address,
-        "nonce": w3_py.eth.get_transaction_count(sender_address),
-        "gas": 2000000,
-        "gasPrice": w3_py.to_wei("50", "gwei")
-    })
-    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-    tx_hash = w3_py.eth.send_raw_transaction(signed_tx.rawTransaction)
-    tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+        # Deploy contract
+        contract = w3_py.eth.contract(abi=abi, bytecode=bytecode)
+        tx = contract.constructor(recipient).build_transaction({
+            "from": sender_address,
+            "nonce": w3_py.eth.get_transaction_count(sender_address),
+            "gas": 2000000,  # Hardcoded for now - make configurable later
+            "gasPrice": w3_py.to_wei("50", "gwei"),  # Adjust for network conditions
+            "value": w3_py.to_wei(1, "ether")  # Funds contract with 1 ETH
+        })
+        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+        try:
+            tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+            tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+        except Exception as e:
+            app.logger.error(f"Transaction failed: {str(e)}")
+            return f"Error: Transaction failed - {str(e)}", 500
 
-    return f"Contract deployed at: {tx_receipt.contractAddress}"
+        contract_address = tx_receipt.contractAddress
+        app.logger.info(f"RecurringPayment deployed at: {contract_address}")
+
+        # TODO: Scale by storing deployments (e.g., SQLite or list)
+        # Example: deployed_contracts.append({"type": "RecurringPayment", "address": contract_address})
+        return f"RecurringPayment deployed at: {contract_address}"
+    
+    # Fallback for unsupported requests - scalable to add more types
+    app.logger.warning(f"Unsupported contract request: {contract_request}")
+    return f"Contract created: {contract_request}"  # Placeholder for now
+
+# Add stats
+@app.route('/analytics/<address>')
+@login_required
+def get_analytics(address):
+    """Fetch wallet analytics for a given address."""
+    analytics = get_wallet_analytics(address)  # Your existing function!
+    if "error" in analytics:
+        return jsonify({"error": analytics["error"]}), 400
+    return jsonify(analytics)  # Send JSON like {"balance": "1 ETH", "tx_count": 10, ...}
+
+@app.route('/news')
+def get_news():
+    """Fetch latest crypto news."""
+    news_items = get_news_items()  # Your existing function!
+    return jsonify(news_items)  # Send JSON like [{"title": "Bitcoin Up!", "link": "..."}, ...]
 
 @app.route("/query", methods=["POST"])
 @login_required
