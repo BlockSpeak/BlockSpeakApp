@@ -4,6 +4,7 @@ import re
 import json
 import os.path
 import sqlite3
+from flask import jsonify  # Added for JSON responses
 from flask import Flask, request, render_template, session, jsonify, redirect, url_for
 from flask_cors import CORS
 from markupsafe import Markup
@@ -622,12 +623,13 @@ def login_metamask():
 def create_contract():
     """
     Handle contract creation requests from the frontend.
-    - Currently supports "Send 1 ETH to Bob every Friday" with RecurringPayment.sol.
-    - Scalable to add more contract types (e.g., SkillNFT) or store deployments in a DB.
-    - Switches between Hardhat (local) and Sepolia (Render) via NETWORK env var.
+    Currently supports "Send <amount> ETH to <address> [every <frequency>]" with RecurringPayment.sol.
+    Scalable to add more contract types (e.g., SkillNFT) or store deployments in a DB.
+    Switches between Hardhat (local) and Sepolia (Render) via NETWORK env var.
     """
     contract_request = request.form.get('contract_request')
     if not contract_request:
+        app.logger.error("No contract request provided in POST data")
         return "Error: No contract request provided", 400
     app.logger.info(f"Received contract request from {current_user.email}: {contract_request}")
 
@@ -642,7 +644,7 @@ def create_contract():
         # Hardhat test accounts for local simulation
         sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"  # Hardhat #0 (You)
         sender_private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-        recipient = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"  # Hardhat #1 (Bob)
+        # recipient = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"  # Hardhat #1 (Bob) - Removed, now from request
     else:  # sepolia
         # Real wallets for live deployment
         sender_address = current_user.email  # Your real wallet: 0x37558169...
@@ -650,10 +652,16 @@ def create_contract():
         if not sender_private_key:
             app.logger.error("No PRIVATE_KEY set in environment")
             return "Error: Server misconfigured - missing PRIVATE_KEY", 500
-        recipient = "0x81a02914d10d94F746Ca193269857819deB9e015"  # Bobs real wallet
+        # recipient = "0x81a02914d10d94F746Ca193269857819deB9e015"  # Bob's real wallet - Removed, now from request
 
-    # Check if request matches supported contract type
-    if "Send 1 ETH to Bob every Friday" in contract_request:
+    # Check if request matches supported contract type with flexible regex
+    match = re.search(r"send (\d+) eth to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+))?", contract_request, re.IGNORECASE)
+    if match:
+        amount = int(match.group(1))  # ETH amount from request
+        recipient = match.group(2)    # Address from request
+        frequency = match.group(3).lower() if match.group(3) else "once"  # Default to one-time if no frequency
+        app.logger.info(f"Parsed contract: Send {amount} ETH to {recipient}, frequency: {frequency}")
+
         # Load compiled contract (ensure RecurringPayment.sol is compiled)
         contract_path = "skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
         app.logger.info(f"Looking for contract at: {os.path.abspath(contract_path)}")  # Debug
@@ -673,7 +681,7 @@ def create_contract():
             "nonce": w3_py.eth.get_transaction_count(sender_address),
             "gas": 2000000,  # Hardcoded for now - make configurable later
             "gasPrice": w3_py.to_wei("50", "gwei"),  # Adjust for network conditions
-            "value": w3_py.to_wei(1, "ether")  # Funds contract with 1 ETH
+            "value": w3_py.to_wei(amount, "ether")  # Funds contract with requested ETH amount
         })
         signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
         try:
@@ -681,18 +689,30 @@ def create_contract():
             tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
         except Exception as e:
             app.logger.error(f"Transaction failed: {str(e)}")
-            return f"Error: Transaction failed - {str(e)}", 500
+            return jsonify({"error": f"Transaction failed: {str(e)}"}), 500  # JSON error for frontend
 
         contract_address = tx_receipt.contractAddress
         app.logger.info(f"RecurringPayment deployed at: {contract_address}")
 
         # TODO: Scale by storing deployments (e.g., SQLite or list)
         # Example: deployed_contracts.append({"type": "RecurringPayment", "address": contract_address})
-        return f"RecurringPayment deployed at: {contract_address}"
+
+        # Make a friendly message for users instead of raw address
+        message = f"Success! Sent {amount} ETH to {recipient}"
+        if frequency != "once":
+            message += f" every {frequency}"
+        return jsonify({
+            "message": message,          # Friendly text for the webpage
+            "contract_address": contract_address,  # Still here for debugging
+            "status": "success"          # Lets frontend know it worked
+        }), 200
     
     # Fallback for unsupported requests - scalable to add more types
     app.logger.warning(f"Unsupported contract request: {contract_request}")
-    return f"Contract created: {contract_request}"  # Placeholder for now
+    return jsonify({
+        "message": f"Oops! We do not support '{contract_request}' yet.",
+        "status": "unsupported"
+    }), 200  # JSON fallback for frontend
 
 # Add stats
 @app.route('/analytics/<address>')

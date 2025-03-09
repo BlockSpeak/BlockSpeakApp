@@ -1,21 +1,23 @@
 // App.js
 // Purpose: BlockSpeak’s frontend—connects users to Web3 via MetaMask, creates smart contracts, and shows analytics/news.
 // Notes:
-// - Dependencies: npm install react react-dom react-router-dom (for routes later)
+// - Dependencies: npm install react react-dom react-router-dom axios (axios for cleaner API calls!)
 // - Tailwind: Uses custom colors from tailwind.config.js (primary: #8B5CF6, dark: #1F2937, accent: #D1D5DB)
 // - Local Testing: BASE_URL = 'http://127.0.0.1:8080'—run Flask server locally first (python server/BlockSpeak.py)
 // - Render Deploy: Switch BASE_URL to 'https://blockspeak.onrender.com', run 'npm run build', push client/build/ to GitHub
 // - Env Setup: Ensure Render has NETWORK=sepolia, PRIVATE_KEY, ALCHEMY_API_KEY, OPENAI_API_KEY, STRIPE_SECRET_KEY
 // - Future: Add routes (/about, /marketplace), DAO creation, LLM chat UI
+// - New: Added axios for POST requests, shows friendly contract messages, works with any ETH wallet!
 
 import React, { useState, useEffect } from 'react';
+import axios from 'axios'; // Added for cleaner API calls—install with 'npm install axios'
 import './index.css'; // Pulls in Tailwind from index.css (check @tailwind directives are there!)
 
 function App() {
     // State variables to manage our app’s data
     const [account, setAccount] = useState(null);           // User’s MetaMask wallet address
     const [contractRequest, setContractRequest] = useState(''); // Text input for contract (e.g., "Send 1 ETH...")
-    const [contractResult, setContractResult] = useState('');   // Result from contract creation
+    const [contractResult, setContractResult] = useState('');   // Result from contract creation (friendly message!)
     const [analytics, setAnalytics] = useState(null);       // Wallet analytics from Flask backend
     const [news, setNews] = useState([]);                   // Crypto news feed from Flask
 
@@ -81,19 +83,24 @@ function App() {
             return;
         }
         try {
-            // Send contract request to Flask backend
-            const response = await fetch(`${BASE_URL}/create_contract`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ contract_request: contractRequest })
-            });
-            const text = await response.text();
-            console.log('Contract created:', text);
-            setContractResult(text); // Show result (e.g., contract address)
+            // Send contract request to Flask backend using axios
+            const response = await axios.post(`${BASE_URL}/create_contract`,
+                new URLSearchParams({ contract_request: contractRequest }), // Form data format
+                {
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    withCredentials: true // Keep session alive (matches Flask’s credentials: 'include')
+                }
+            );
+
+            // Flask returns JSON like: {message: "Success! Sent 1 ETH to 0x...", contract_address: "0x...", status: "success"}
+            const data = response.data;
+            console.log('Contract created:', data.contract_address); // Debug: log the address
+            setContractResult(data.message); // Show friendly message (e.g., "Success! Sent 1 ETH to 0x...")
         } catch (error) {
             console.error('Contract creation error:', error);
-            setContractResult('Error creating contract');
+            // If Flask sends an error (e.g., {message: "Oops!..."}), use that, otherwise generic error
+            const errorMessage = error.response?.data?.message || 'Error creating contract—check console!';
+            setContractResult(errorMessage);
         }
     };
 
@@ -153,7 +160,9 @@ function App() {
 
                     {/* Show contract result */}
                     {contractResult && (
-                        <div className="mt-4 text-accent" dangerouslySetInnerHTML={{ __html: contractResult }} />
+                        <div className="mt-4 text-accent">
+                            {contractResult} {/* Now shows "Success! Sent 1 ETH..." instead of raw JSON */}
+                        </div>
                     )}
 
                     {/* Wallet analytics section */}
