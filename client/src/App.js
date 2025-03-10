@@ -11,12 +11,15 @@ import { Line } from "react-chartjs-2";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from "chart.js";
 import "./index.css";
 
+// Register ChartJS components for graphs
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
+// Base URL switches between local testing and production
 const BASE_URL = window.location.hostname === "localhost" ? "http://127.0.0.1:8080" : "https://blockspeak.onrender.com";
 // Your ETH wallet for payments - replace with your real one for live!
 const ETH_PAYMENT_ADDRESS = "0x37558169d86748dA34eACC76eEa6b5AF787FF74c";
 
+// Home component: Landing page with MetaMask login
 function Home({ loginWithMetaMask }) {
     return (
         <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
@@ -34,6 +37,7 @@ function Home({ loginWithMetaMask }) {
     );
 }
 
+// Dashboard component: Main user interface after login
 function Dashboard({ account, logout, subscription }) {
     const [contractRequest, setContractRequest] = useState("");
     const [contractResult, setContractResult] = useState("");
@@ -44,6 +48,7 @@ function Dashboard({ account, logout, subscription }) {
     const [topCoins, setTopCoins] = useState([]);
     const [graphData, setGraphData] = useState(null);
 
+    // Function to create a smart contract
     const createContract = async (e) => {
         e.preventDefault();
         if (!account) return alert("Please log in!");
@@ -60,6 +65,7 @@ function Dashboard({ account, logout, subscription }) {
         }
     };
 
+    // Function to ask a crypto-related question
     const askQuery = async (e) => {
         e.preventDefault();
         if (!account) return alert("Please log in!");
@@ -76,6 +82,7 @@ function Dashboard({ account, logout, subscription }) {
         }
     };
 
+    // Load initial data (news, coins, analytics, graph) when account changes
     useEffect(() => {
         let mounted = true;
         axios.get(`${BASE_URL}/api/`).then((res) => {
@@ -111,6 +118,7 @@ function Dashboard({ account, logout, subscription }) {
         return () => { mounted = false; };
     }, [account]);
 
+    // Welcome banner for paid users
     const welcomeBanner = subscription !== "free" ? (
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-lg shadow-lg mb-6 text-center">
             <p className="text-lg text-white">
@@ -211,6 +219,7 @@ function Dashboard({ account, logout, subscription }) {
     );
 }
 
+// Subscribe component: Handles subscription plans (Stripe and ETH)
 function Subscribe({ account, subscription, setSubscription }) {
     const navigate = useNavigate();
 
@@ -304,9 +313,11 @@ function Subscribe({ account, subscription, setSubscription }) {
     );
 }
 
+// Success component: Confirms subscription and redirects
 function Success({ account, setAccount, subscription, setSubscription }) {
     const navigate = useNavigate();
 
+    // Confirm subscription on load
     useEffect(() => {
         const confirmSubscription = async () => {
             try {
@@ -335,6 +346,7 @@ function Success({ account, setAccount, subscription, setSubscription }) {
     );
 }
 
+// Marketplace component: Placeholder for future features
 function Marketplace() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -344,6 +356,7 @@ function Marketplace() {
     );
 }
 
+// AboutUs component: Info about BlockSpeak
 function AboutUs() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -355,6 +368,7 @@ function AboutUs() {
     );
 }
 
+// HowItWorks component: Simple guide to using BlockSpeak
 function HowItWorks() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -368,6 +382,7 @@ function HowItWorks() {
     );
 }
 
+// EmailSignup component: Collects emails for marketing
 function EmailSignup() {
     const [email, setEmail] = useState("");
     const handleSignup = async (e) => {
@@ -395,19 +410,23 @@ function EmailSignup() {
     );
 }
 
+// Main App component: Sets up routing and state
 function App() {
     const [account, setAccount] = useState(localStorage.getItem("account") || null);
     const [subscription, setSubscription] = useState("free");
 
+    // Updates account state and localStorage
     const updateAccount = (newAccount) => {
         setAccount(newAccount);
         if (newAccount) localStorage.setItem("account", newAccount);
         else localStorage.removeItem("account");
     };
 
+    // AppContent: Defines the layout and navigation
     function AppContent() {
         const navigate = useNavigate();
 
+        // Login with MetaMask
         const loginWithMetaMask = async () => {
             if (!window.ethereum) return alert("Please install MetaMask!");
             try {
@@ -434,6 +453,7 @@ function App() {
             }
         };
 
+        // Logout function
         const logout = async () => {
             try {
                 await axios.get(`${BASE_URL}/api/logout`, { withCredentials: true });
@@ -449,7 +469,7 @@ function App() {
         };
 
         return (
-            <>
+            <div className="flex flex-col min-h-screen bg-dark">
                 <nav className="bg-gray-800 p-4 flex justify-center space-x-6">
                     <Link to="/" className="text-primary hover:text-purple-400 text-lg">Home</Link>
                     {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg">Dashboard</Link>}
@@ -458,19 +478,21 @@ function App() {
                     <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg">How It Works</Link>
                     <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg">Subscribe</Link>
                 </nav>
-                <Routes>
-                    <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} />} />
-                    <Route path="/dashboard" element={<Dashboard account={account} logout={logout} subscription={subscription} />} />
-                    <Route path="/subscribe" element={<Subscribe account={account} subscription={subscription} setSubscription={setSubscription} />} />
-                    <Route path="/success" element={<Success account={account} setAccount={updateAccount} subscription={subscription} setSubscription={setSubscription} />} />
-                    <Route path="/marketplace" element={<Marketplace />} />
-                    <Route path="/about" element={<AboutUs />} />
-                    <Route path="/how-it-works" element={<HowItWorks />} />
-                </Routes>
-                <footer className="bg-dark p-4 mt-8 sticky bottom-0">
+                <main className="flex-grow">
+                    <Routes>
+                        <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} />} />
+                        <Route path="/dashboard" element={<Dashboard account={account} logout={logout} subscription={subscription} />} />
+                        <Route path="/subscribe" element={<Subscribe account={account} subscription={subscription} setSubscription={setSubscription} />} />
+                        <Route path="/success" element={<Success account={account} setAccount={updateAccount} subscription={subscription} setSubscription={setSubscription} />} />
+                        <Route path="/marketplace" element={<Marketplace />} />
+                        <Route path="/about" element={<AboutUs />} />
+                        <Route path="/how-it-works" element={<HowItWorks />} />
+                    </Routes>
+                </main>
+                <footer className="bg-gray-800 p-4 w-full">
                     <EmailSignup />
                 </footer>
-            </>
+            </div>
         );
     }
 
