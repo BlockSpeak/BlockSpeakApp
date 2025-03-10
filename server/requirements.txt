@@ -6,7 +6,7 @@ gunicorn       # Makes the app run fast on Renders cloud server instead of just 
 feedparser     # Grabs crypto news from RSS feeds (like CoinJournal) to show on the homepage
 stripe         # Takes money from users for subscriptions (like Basic or Pro plans)
 flask-login    # Keeps track of whos logged in with email/password or MetaMask
-werkzeug       # Locks passwords with secret codes so they’re safe in the database
+werkzeug       # Locks passwords with secret codes so they are safe in the database
 web3           # Connects to blockchains (Ethereum/Solana) to deploy contracts and check wallets
 flask-cors     # Lets the React frontend talk to the Flask backend without security blocks
 python-dotenv  # Loads secret keys (like API keys) from a hidden LOLUBUNNY file so the app can use them
