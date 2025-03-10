@@ -487,20 +487,26 @@ def query():
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
-    """Starts a Stripe subscription."""
-    plan = request.form.get("plan")
-    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan)
+    """Starts a Stripe subscription - sends user to Checkout with a dynamic redirect."""
+    plan = request.form.get("plan") # Grabs "basic" or "pro" from frontend form - what they are buying!
+    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan) # Test Price IDs - swap for live IDs when ready!
     if not price_id:
-        return jsonify({"error": "Invalid plan"}), 400
+        return jsonify({"error": "Invalid plan"}), 400 # Bad plan? Kick it back with a 400 - no funny business!
     try:
+        # Dynamic base URL: localhost for testing, blockspeak.co for live - APP_ENV decides!
+        base_url = "http://localhost:3000" if os.getenv("APP_ENV") == "development" else "https://blockspeak.co"
         checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"], customer=current_user.stripe_customer_id,
-            line_items=[{"price": price_id, "quantity": 1}], mode="subscription",
-            success_url="https://blockspeak.co/success?plan=" + plan, cancel_url="https://blockspeak.co"
+            payment_method_types=["card"], # Card-only payments - simple and clean.
+            customer=current_user.stripe_customer_id, # Links to users Stripe ID - set when they signed up.
+            line_items=[{"price": price_id, "quantity": 1}], # One subscription item - basic or pro, no extras.
+            mode="subscription", # Recurring payment setup - monthly vibes!
+            success_url=f"{base_url}/success?plan={plan}", # Redirects to success page - local or live, APP_ENV picks!
+            cancel_url=base_url, # Back to home if they bail - matches the environment.
         )
-        return jsonify({"checkout_url": checkout_session.url})
+        return jsonify({"checkout_url": checkout_session.url}) # Sends Stripe Checkout URL to frontend - off they go!
     except stripe.error.StripeError as e:
-        return jsonify({"error": "Subscription failed"}), 500
+        app.logger.error(f"Stripe error: {str(e)}") # Logs Stripe fails - check this if it bombs!
+        return jsonify({"error": "Subscription failed"}), 500 # 500 if Stripes down - user sees try again.
 
 @app.route("/api/subscription_success")
 @login_required
