@@ -11,6 +11,7 @@ This is the backend brain of BlockSpeak, serving data to our React frontend at h
 # Imports: All the tools we need
 import os  # For file system stuff
 from dotenv import load_dotenv  # Loads secrets from .env file
+from flask import redirect  # http rederict
 import re  # Regular expressions for parsing contract requests
 import json  # For working with JSON data
 import sqlite3  # Our simple database for users
@@ -537,8 +538,12 @@ def coin_graph(coin_id):
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
-    """Catches all non-API routes and redirects to React."""
-    return jsonify({"message": "API only. Visit https://blockspeak.co for UI."})
+    """Redirects non-API requests to the frontend at https://blockspeak.co."""
+    if path.startswith("api/") or path == "nonce" or path == "login/metamask":
+        # Let API routes pass through (handled by specific endpoints)
+        return app.handle_url_build_error(None, path, None)
+    # Redirect everything else to the frontend
+    return redirect("https://blockspeak.co", code=302)
 
 @app.before_request
 def start_session():
