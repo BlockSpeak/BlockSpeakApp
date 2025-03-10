@@ -470,7 +470,7 @@ function App() {
 
         return (
             <div className="flex flex-col min-h-screen bg-dark">
-                <nav className="bg-gray-800 p-4 flex justify-center space-x-6">
+                <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:justify-center gap-2 sm:gap-0 sm:space-x-6 text-center sm:text-left">
                     <Link to="/" className="text-primary hover:text-purple-400 text-lg">Home</Link>
                     {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg">Dashboard</Link>}
                     <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg">Marketplace</Link>
