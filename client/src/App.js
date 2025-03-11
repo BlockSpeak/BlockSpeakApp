@@ -23,7 +23,7 @@ const ETH_PAYMENT_ADDRESS = "0x37558169d86748dA34eACC76eEa6b5AF787FF74c";
 function Home({ loginWithMetaMask }) {
     return (
         <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
-            <h1 className="text-8xl font-bold text-primary mb-6">
+            <h1 className="text-8xl font-bold text-primary mb-6 tracking-wider">
                 Block Speak
             </h1>
             <div className="text-sm text-gray-400 mb-4">
@@ -711,7 +711,7 @@ function App() {
                     navigate("/dashboard");
                 } else throw new Error("Login failed");
             } catch (error) {
-                alert("Login failed - check console!");
+                alert("Login failed, check console!");
                 console.error("Login error:", error);
             }
         };
@@ -738,13 +738,13 @@ function App() {
                     <Link to="/">
                         <img src="/blockspeakvert.svg" alt="Block Speak Vertical Logo" className="h-16 mx-auto sm:mx-0 transition-transform duration-200 hover:scale-105" />
                     </Link>
-                    <div className="flex flex-col sm:flex-row sm:justify-center gap-2 sm:gap-0 sm:space-x-6">
-                        <Link to="/" className="text-primary hover:text-purple-400 text-lg">Home</Link>
-                        {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg">Dashboard</Link>}
-                        <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg">Marketplace</Link>
-                        <Link to="/about" className="text-primary hover:text-purple-400 text-lg">About Us</Link>
-                        <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg">How It Works</Link>
-                        <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg">Subscribe</Link>
+                    <div className="flex flex-col sm:flex-row sm:justify-center gap-4 sm:gap-0 sm:space-x-6 mt-4 sm:mt-0">
+                        <Link to="/" className="text-primary hover:text-purple-400 text-lg py-2">Home</Link>
+                        {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg py-2">Dashboard</Link>}
+                        <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg py-2">Marketplace</Link>
+                        <Link to="/about" className="text-primary hover:text-purple-400 text-lg py-2">About Us</Link>
+                        <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg py-2">How It Works</Link>
+                        <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg py-2">Subscribe</Link>
                     </div>
                 </nav>
                 <main className="flex-grow">
