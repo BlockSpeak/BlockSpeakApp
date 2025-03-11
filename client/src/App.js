@@ -20,16 +20,22 @@ const BASE_URL = window.location.hostname === "localhost" ? "http://127.0.0.1:80
 const ETH_PAYMENT_ADDRESS = "0x37558169d86748dA34eACC76eEa6b5AF787FF74c";
 
 // Home component: Landing page with MetaMask login
+// Home component: Landing page with MetaMask login
 function Home({ loginWithMetaMask }) {
     return (
         <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
-            <h1 className="text-5xl font-bold text-primary mb-6">BlockSpeak</h1>
+            <h1 className="text-8xl font-bold text-primary mb-6">
+                Block Speak
+            </h1>
+            <div className="text-sm text-gray-400 mb-4">
+                Live Contracts: 123 <span className="pulse-dot"></span>
+            </div>
             <p className="text-xl text-white mb-8 text-center max-w-2xl">
                 Create Smart Contracts, Ask Crypto Questions, Own Your Blockchain
             </p>
             <button
                 onClick={loginWithMetaMask}
-                className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl flex items-center"
+                className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl flex items-center transition-transform duration-200 hover:scale-105"
             >
                 <span>Login with MetaMask</span>
             </button>
@@ -470,13 +476,18 @@ function App() {
 
         return (
             <div className="flex flex-col min-h-screen bg-dark">
-                <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:justify-center gap-2 sm:gap-0 sm:space-x-6 text-center sm:text-left">
-                    <Link to="/" className="text-primary hover:text-purple-400 text-lg">Home</Link>
-                    {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg">Dashboard</Link>}
-                    <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg">Marketplace</Link>
-                    <Link to="/about" className="text-primary hover:text-purple-400 text-lg">About Us</Link>
-                    <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg">How It Works</Link>
-                    <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg">Subscribe</Link>
+                <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0 text-center sm:text-left">
+                    <Link to="/">
+                        <img src="/blockspeakvert.svg" alt="Block Speak Vertical Logo" className="h-16 mx-auto sm:mx-0 transition-transform duration-200 hover:scale-105" />
+                    </Link>
+                    <div className="flex flex-col sm:flex-row sm:justify-center gap-2 sm:gap-0 sm:space-x-6">
+                        <Link to="/" className="text-primary hover:text-purple-400 text-lg">Home</Link>
+                        {account && <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg">Dashboard</Link>}
+                        <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg">Marketplace</Link>
+                        <Link to="/about" className="text-primary hover:text-purple-400 text-lg">About Us</Link>
+                        <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg">How It Works</Link>
+                        <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg">Subscribe</Link>
+                    </div>
                 </nav>
                 <main className="flex-grow">
                     <Routes>
