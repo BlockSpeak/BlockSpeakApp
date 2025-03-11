@@ -1,17 +1,15 @@
 # BlockSpeak.py
-"""
-BlockSpeak.py - Pure JSON API Backend for BlockSpeak
---------------------------------------------------
-This is the backend brain of BlockSpeak, serving data to our React frontend at https://blockspeak.co.
-- Local: Runs at http://127.0.0.1:8080 with Hardhat for testing
-- Production: Runs at https://blockspeak.onrender.com with Ethereum mainnet via Alchemy
-- No HTML here, just JSON responses for everything!
-"""
+# Pure JSON API Backend for BlockSpeak
+# ------------------------------------
+# This is the backend brain of BlockSpeak, serving data to our React frontend at https://blockspeak.co.
+# - Local: Runs at http://127.0.0.1:8080 with Hardhat for testing.
+# - Production: Runs at https://blockspeak.onrender.com with Ethereum Mainnet via Alchemy.
+# - No HTML here, just JSON responses for everything!
 
 # Imports: All the tools we need
 import os  # For file system stuff
 from dotenv import load_dotenv  # Loads secrets from .env file
-from flask import redirect  # http rederict
+from flask import redirect  # HTTP redirect
 import re  # Regular expressions for parsing contract requests
 import json  # For working with JSON data
 import sqlite3  # Our simple database for users
@@ -33,8 +31,8 @@ import uuid  # Unique IDs for nonces
 load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/server/.env")
 
 # NETWORK decides if we are testing locally or live:
-# - "hardhat": Local blockchain at http://127.0.0.1:8545 for testing
-# - "mainnet": Ethereum mainnet via Alchemy for production
+# - "hardhat": Local blockchain at http://127.0.0.1:8545 for testing.
+# - "mainnet": Ethereum Mainnet via Alchemy for production.
 NETWORK = os.getenv("NETWORK", "hardhat")
 if NETWORK == "hardhat":
     w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))
@@ -42,6 +40,12 @@ elif NETWORK == "mainnet":
     w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
 else:
     raise ValueError(f"Unsupported NETWORK: {NETWORK}")
+
+# ETH payment address - replace with your real wallet for live!
+ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")
+# ETH subscription prices (test values - adjust for live ETH price, e.g., $2000/ETH)
+BASIC_PLAN_ETH = 0.005  # ~$10
+PRO_PLAN_ETH = 0.025    # ~$50
 
 # Set up Flask app
 app = Flask(__name__)
@@ -70,7 +74,7 @@ login_manager.init_app(app)
 
 # Database setup: Simple SQLite for users
 def init_db():
-    """Creates the users table if it doesnt exist."""
+    # Creates the users table if it doesn’t exist
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (
@@ -83,18 +87,18 @@ init_db()
 
 # User class for Flask-Login
 class User(UserMixin):
-    """Represents a user with email, subscription, Stripe ID, and history."""
+    # Represents a user with email, subscription, Stripe ID, and history
     def __init__(self, email, subscription="free", stripe_customer_id=None, history=None):
         self.email = email
         self.subscription = subscription
         self.stripe_customer_id = stripe_customer_id
         self.history = json.loads(history) if history else []
     def get_id(self):
-        return self.email  # Unique ID is the email
+        return self.email  # Unique ID is the email (or wallet address for MetaMask)
 
 @login_manager.user_loader
 def load_user(email):
-    """Loads a user from the database by email."""
+    # Loads a user from the database by email
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (email,))
@@ -105,7 +109,7 @@ def load_user(email):
     return None
 
 def save_user_history(email, history):
-    """Saves the users last 3 queries to the database."""
+    # Saves the user’s last 3 queries to the database
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("UPDATE users SET history = ? WHERE email = ?", (json.dumps(history[:3]), email))
@@ -114,19 +118,19 @@ def save_user_history(email, history):
 
 # Utility Functions: Helpers for our logic
 def is_bitcoin_address(text):
-    """Checks if text is a Bitcoin address."""
+    # Checks if text is a Bitcoin address
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
 
 def is_wallet_address(text):
-    """Checks if text is an Ethereum address."""
+    # Checks if text is an Ethereum address
     return text.startswith("0x") and len(text) == 42
 
 def is_solana_address(text):
-    """Checks if text is a Solana address."""
+    # Checks if text is a Solana address
     return len(text) == 44 and all(c in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz" for c in text)
 
 def normalize_question(text):
-    """Turns user questions into standard formats for easier handling."""
+    # Turns user questions into standard formats for easier handling
     text = text.lower().strip()
     if "predict" in text or "price in" in text: return "price_prediction"
     if "gas" in text: return "gas"
@@ -136,7 +140,7 @@ def normalize_question(text):
     return text
 
 def get_crypto_price(coin):
-    """Fetches current price from CoinCap API."""
+    # Fetches current price from CoinCap API
     url = f"https://api.coincap.io/v2/assets/{coin}"
     try:
         response = requests.get(url).json()
@@ -147,7 +151,7 @@ def get_crypto_price(coin):
         return "Price unavailable"
 
 def get_trending_crypto():
-    """Gets top 3 trending coins by volume from CoinCap."""
+    # Gets top 3 trending coins by volume from CoinCap
     url = "https://api.coincap.io/v2/assets?limit=3"
     try:
         response = requests.get(url).json()
@@ -157,11 +161,11 @@ def get_trending_crypto():
         return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
 
 def get_x_profiles():
-    """Returns static list of crypto X profiles."""
+    # Returns static list of crypto X profiles
     return [{"name": "Bitcoin", "link": "https://x.com/Bitcoin"}, {"name": "Ethereum", "link": "https://x.com/ethereum"}, {"name": "Solana", "link": "https://x.com/Solana"}]
 
 def get_news_items():
-    """Fetches latest crypto news from RSS feeds."""
+    # Fetches latest crypto news from RSS feeds
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
     urls = ["https://coinjournal.net/feed/", "https://cointelegraph.com/rss"]
     for url in urls:
@@ -176,7 +180,7 @@ def get_news_items():
     return [{"title": "News unavailable - check back later!", "link": "#"}]
 
 def get_wallet_analytics(address):
-    """Gets wallet stats for Bitcoin, Ethereum, or Solana."""
+    # Gets wallet stats for Bitcoin, Ethereum, or Solana
     analytics = {}
     if is_bitcoin_address(address):
         try:
@@ -190,13 +194,12 @@ def get_wallet_analytics(address):
             return {"error": "Could not fetch Bitcoin analytics"}
     elif is_wallet_address(address):
         try:
-            # Convert to checksum address for Web3.py compatibility
             checksum_address = w3.to_checksum_address(address)
             balance_wei = w3.eth.get_balance(checksum_address)
             balance_eth = balance_wei / 1e18
             tx_count = w3.eth.get_transaction_count(checksum_address)
             top_tokens = "ETH only"  # Default for Hardhat
-            if NETWORK == "mainnet":  # Only check USDT on mainnet
+            if NETWORK == "mainnet":  # Only check USDT on Mainnet
                 usdt_contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
                 usdt_balance = w3.eth.call({
                     "to": usdt_contract,
@@ -217,7 +220,7 @@ def get_wallet_analytics(address):
             return {"error": "Could not fetch Ethereum analytics"}
     elif is_solana_address(address):
         try:
-            sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}" 
+            sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
             payload = {"jsonrpc": "2.0", "method": "getBalance", "params": [address], "id": 1}
             balance_response = requests.post(sol_url, json=payload).json()
             if "result" not in balance_response:
@@ -238,12 +241,11 @@ def get_wallet_analytics(address):
     return analytics
 
 def get_historical_balance(address, chain):
-    """Gets 30-day balance history for a wallet."""
-    # Omitted for brevity same as before just returns balances list
+    # Gets 30-day balance history for a wallet - omitted for brevity
     pass
 
 def get_top_coins():
-    """Fetches top coins from CoinCap with caching."""
+    # Fetches top coins from CoinCap with caching
     cache_file = "top_coins_cache.json"
     now = datetime.now(timezone.utc)
     if os.path.exists(cache_file):
@@ -280,7 +282,7 @@ def get_top_coins():
                 {"id": "tether", "name": "Tether", "image": "https://assets.coincap.io/assets/icons/usdt@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"}]
 
 def get_coin_graph(coin_id):
-    """Fetches 7-day price history for a coin."""
+    # Fetches 7-day price history for a coin
     cache_key = f"coin_graph_{coin_id}"
     if cache_key in session and session[cache_key]["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=5):
         return session[cache_key]["data"]
@@ -308,21 +310,21 @@ def get_coin_graph(coin_id):
         return graph_data
 
 def predict_price(coin, days):
-    """Predicts future price based on 30-day trend."""
-    # Omitted for brevity same as before
+    # Predicts future price based on 30-day trend - omitted for brevity
     pass
 
+# API Routes
 @app.route("/nonce")
 def get_nonce():
-    # Gives React a nonce for secure MetaMask login.
+    # Gives React a nonce for secure MetaMask login
     nonce = str(uuid.uuid4())
     session["nonce"] = nonce
-    app.logger.info(f"Generated nonce: {nonce}")  # Add this line to log the nonce!
+    app.logger.info(f"Generated nonce: {nonce}")
     return nonce
 
 @app.route("/api/register", methods=["POST"])
 def register():
-    """Registers a new user with email and password."""
+    # Registers a new user with email and password
     email = request.form.get("email")
     password = request.form.get("password")
     if not email or "@" not in email or "." not in email:
@@ -350,7 +352,7 @@ def register():
 
 @app.route("/api/login", methods=["POST"])
 def login():
-    """Logs in a user with email and password."""
+    # Logs in a user with email and password
     email = request.form.get("email")
     password = request.form.get("password")
     conn = sqlite3.connect("users.db")
@@ -367,13 +369,13 @@ def login():
 @app.route("/api/logout")
 @login_required
 def logout():
-    """Logs out the current user."""
+    # Logs out the current user
     logout_user()
     return jsonify({"success": True, "message": "Logged out!"})
 
 @app.route("/login/metamask", methods=["POST"])
 def login_metamask():
-    """Logs in a user with MetaMask signature."""
+    # Logs in a user with MetaMask signature
     data = request.json
     address = data.get("address")
     signature = data.get("signature")
@@ -406,15 +408,14 @@ def login_metamask():
 @app.route("/api/create_contract", methods=["POST"])
 @login_required
 def create_contract():
-    """Creates a smart contract based on user input."""
+    # Creates a smart contract based on user input
     contract_request = request.form.get("contract_request")
     if not contract_request:
         return jsonify({"error": "No request"}), 400
-    w3_py = w3  # Use global w3 (Hardhat or mainnet)
+    w3_py = w3  # Use global w3 (Hardhat or Mainnet)
     if not w3_py.is_connected():
         return jsonify({"error": "Blockchain not connected"}), 500
     sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email
-    # Pick the right private key based on NETWORK
     sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
     if not sender_private_key:
         return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
@@ -446,19 +447,19 @@ def create_contract():
 @app.route("/api/analytics/<address>")
 @login_required
 def get_analytics(address):
-    """Fetches wallet analytics for an address."""
+    # Fetches wallet analytics for an address
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
 
 @app.route("/api/news")
 def get_news_api():
-    """Returns latest crypto news."""
+    # Returns latest crypto news
     return jsonify(get_news_items())
 
 @app.route("/api/query", methods=["POST"])
 @login_required
 def query():
-    """Handles user questions about crypto."""
+    # Handles user questions about crypto
     user_question = request.form.get("question", "").strip()
     normalized_question = normalize_question(user_question)
     history = current_user.history
@@ -487,36 +488,70 @@ def query():
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
-    """Starts a Stripe subscription - sends user to Checkout with a dynamic redirect."""
-    plan = request.form.get("plan") # Grabs "basic" or "pro" from frontend form - what they are buying!
-    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan) # Test Price IDs - swap for live IDs when ready!
+    # Starts a Stripe subscription - sends user to Checkout with a dynamic redirect
+    plan = request.form.get("plan")  # Grabs "basic" or "pro" from frontend form
+    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan)  # Test Price IDs - swap for live
     if not price_id:
-        return jsonify({"error": "Invalid plan"}), 400 # Bad plan? Kick it back with a 400 - no funny business!
+        return jsonify({"error": "Invalid plan"}), 400  # Bad plan? Kick it back
     try:
-        # Dynamic base URL: localhost for testing, blockspeak.co for live - APP_ENV decides!
         base_url = "http://localhost:3000" if os.getenv("APP_ENV") == "development" else "https://blockspeak.co"
         checkout_session = stripe.checkout.Session.create(
-            payment_method_types=["card"], # Card-only payments - simple and clean.
-            customer=current_user.stripe_customer_id, # Links to users Stripe ID - set when they signed up.
-            line_items=[{"price": price_id, "quantity": 1}], # One subscription item - basic or pro, no extras.
-            mode="subscription", # Recurring payment setup - monthly vibes!
-            success_url=f"{base_url}/success?plan={plan}", # Redirects to success page - local or live, APP_ENV picks!
-            cancel_url=base_url, # Back to home if they bail - matches the environment.
+            payment_method_types=["card"],
+            customer=current_user.stripe_customer_id,
+            line_items=[{"price": price_id, "quantity": 1}],
+            mode="subscription",
+            success_url=f"{base_url}/success?plan={plan}",
+            cancel_url=base_url,
         )
-        return jsonify({"checkout_url": checkout_session.url}) # Sends Stripe Checkout URL to frontend - off they go!
+        return jsonify({"checkout_url": checkout_session.url})  # Sends Stripe Checkout URL to frontend
     except stripe.error.StripeError as e:
-        app.logger.error(f"Stripe error: {str(e)}") # Logs Stripe fails - check this if it bombs!
-        return jsonify({"error": "Subscription failed"}), 500 # 500 if Stripes down - user sees try again.
+        app.logger.error(f"Stripe error: {str(e)}")
+        return jsonify({"error": "Subscription failed"}), 500
+
+@app.route("/api/subscribe_eth", methods=["POST"])
+@login_required
+def subscribe_eth():
+    # Handles ETH subscription payments - verifies tx and sets sub
+    plan = request.form.get("plan")  # "basic" or "pro" from frontend
+    tx_hash = request.form.get("tx_hash")  # Transaction hash from MetaMask
+    if plan not in ["basic", "pro"]:
+        return jsonify({"error": "Invalid plan"}), 400
+    expected_amount = BASIC_PLAN_ETH if plan == "basic" else PRO_PLAN_ETH
+    try:
+        # Get transaction details
+        tx = w3.eth.get_transaction(tx_hash)
+        amount_sent = w3.from_wei(tx["value"], "ether")  # Convert Wei to ETH
+        recipient = tx["to"].lower()
+        sender = tx["from"].lower()
+        # Verify payment
+        if recipient != ETH_PAYMENT_ADDRESS.lower():
+            return jsonify({"error": "Wrong recipient address"}), 400
+        if sender != current_user.email.lower():
+            return jsonify({"error": "Sender mismatch"}), 400
+        if amount_sent < expected_amount:
+            return jsonify({"error": f"Insufficient payment - sent {amount_sent} ETH, need {expected_amount} ETH"}), 400
+        # Wait for confirmation (1 block - adjust for live if needed)
+        w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        # Payment good - update subscription
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("UPDATE users SET subscription = ? WHERE email = ?", (plan, current_user.email))
+        conn.commit()
+        conn.close()
+        app.logger.info(f"ETH subscription successful for {current_user.email} - Plan: {plan}, Tx: {tx_hash}")
+        return jsonify({"success": True}), 200
+    except Exception as e:
+        app.logger.error(f"ETH subscription error for {current_user.email}: {str(e)}")
+        return jsonify({"error": "Payment verification failed"}), 500
 
 @app.route("/api/subscription_success")
 @login_required
 def subscription_success():
-    """Confirms a subscription after Stripe payment."""
+    # Confirms a subscription after Stripe payment
     plan = request.args.get("plan")
     if plan in ["basic", "pro"]:
         subscriptions = stripe.Subscription.list(customer=current_user.stripe_customer_id)
         if subscriptions.data and subscriptions.data[0].status == "active":
-            current_user.subscription = plan
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
             c.execute("UPDATE users SET subscription = ? WHERE email = ?", (plan, current_user.email))
@@ -527,7 +562,7 @@ def subscription_success():
 
 @app.route("/api/")
 def home_api():
-    """Main data endpoint for the home page."""
+    # Main data endpoint for the home page
     history = current_user.history if current_user.is_authenticated else []
     subscription = current_user.subscription if current_user.is_authenticated else "free"
     return jsonify({
@@ -538,22 +573,20 @@ def home_api():
 
 @app.route("/api/coin_graph/<coin_id>")
 def coin_graph(coin_id):
-    """Returns 7-day price graph data for a coin."""
+    # Returns 7-day price graph data for a coin
     return jsonify(get_coin_graph(coin_id))
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
-    """Redirects non-API requests to the frontend at https://blockspeak.co."""
+    # Redirects non-API requests to the frontend at https://blockspeak.co
     if path.startswith("api/") or path == "nonce" or path == "login/metamask":
-        # Let API routes pass through (handled by specific endpoints)
         return app.handle_url_build_error(None, path, None)
-    # Redirect everything else to the frontend
     return redirect("https://blockspeak.co", code=302)
 
 @app.before_request
 def start_session():
-    """Ensures a session exists for each request."""
+    # Ensures a session exists for each request
     if "nonce" not in session:
         session["nonce"] = None
 
