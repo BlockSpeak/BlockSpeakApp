@@ -20,7 +20,6 @@ const BASE_URL = window.location.hostname === "localhost" ? "http://127.0.0.1:80
 const ETH_PAYMENT_ADDRESS = "0x37558169d86748dA34eACC76eEa6b5AF787FF74c";
 
 // Home component: Landing page with MetaMask login
-// Home component: Landing page with MetaMask login
 function Home({ loginWithMetaMask }) {
     return (
         <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
@@ -44,17 +43,29 @@ function Home({ loginWithMetaMask }) {
 }
 
 // Dashboard component: Main user interface after login
+// Displays forms to create smart contracts and DAOs, ask crypto questions, and shows wallet analytics,
+// price graphs, top coins, and news. Now includes DAO voting: join, propose, and vote on ideas!
 function Dashboard({ account, logout, subscription }) {
-    const [contractRequest, setContractRequest] = useState("");
-    const [contractResult, setContractResult] = useState("");
-    const [analytics, setAnalytics] = useState(null);
-    const [news, setNews] = useState([]);
-    const [query, setQuery] = useState("");
-    const [queryResult, setQueryResult] = useState("");
-    const [topCoins, setTopCoins] = useState([]);
-    const [graphData, setGraphData] = useState(null);
+    const [contractRequest, setContractRequest] = useState(""); // Input for creating a smart contract
+    const [contractResult, setContractResult] = useState(""); // Result message from contract creation
+    const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, tx count, tokens)
+    const [news, setNews] = useState([]); // Latest crypto news items
+    const [query, setQuery] = useState(""); // Input for asking crypto-related questions
+    const [queryResult, setQueryResult] = useState(""); // Result message from query
+    const [topCoins, setTopCoins] = useState([]); // Top cryptocurrencies data
+    const [graphData, setGraphData] = useState(null); // Bitcoin price graph data
+    const [daoName, setDaoName] = useState(""); // Input for DAO name
+    const [daoDescription, setDaoDescription] = useState(""); // Input for DAO description
+    const [daoResult, setDaoResult] = useState(""); // Result message from DAO creation
+    const [daoAddress, setDaoAddress] = useState(""); // Input for DAO address to join/vote
+    const [joinResult, setJoinResult] = useState(""); // Result message from joining DAO
+    const [proposalDescription, setProposalDescription] = useState(""); // Input for proposal description
+    const [proposalResult, setProposalResult] = useState(""); // Result message from creating proposal
+    const [proposals, setProposals] = useState([]); // List of proposals for the DAO
+    const [voteResult, setVoteResult] = useState(""); // Result message from voting
 
     // Function to create a smart contract
+    // Sends a contract request to the backend (/api/create_contract) and displays the result.
     const createContract = async (e) => {
         e.preventDefault();
         if (!account) return alert("Please log in!");
@@ -71,7 +82,111 @@ function Dashboard({ account, logout, subscription }) {
         }
     };
 
+    // Function to create a DAO
+    // Sends DAO name and description to the backend (/api/create_dao) to deploy a DAO contract.
+    // Displays the result, including the deployed contract address.
+    const createDao = async (e) => {
+        e.preventDefault();
+        if (!account) return alert("Please log in!");
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/api/create_dao`,
+                new URLSearchParams({ dao_name: daoName, dao_description: daoDescription }),
+                { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+            );
+            setDaoResult(response.data.message);
+            // Auto-set the DAO address for joining/voting
+            const addressMatch = response.data.message.match(/Address: (0x[a-fA-F0-9]{40})/);
+            if (addressMatch) setDaoAddress(addressMatch[1]);
+        } catch (error) {
+            setDaoResult(error.response?.data?.error || "Oops! Something is wrong with our system. Please try again later or contact support.");
+            console.error("DAO error:", error);
+        }
+    };
+
+    // Function to join a DAO
+    // Sends the DAO address to the backend (/api/join_dao) to join as a member.
+    const joinDao = async (e) => {
+        e.preventDefault();
+        if (!account) return alert("Please log in!");
+        if (!daoAddress) return alert("Please enter a DAO address!");
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/api/join_dao`,
+                new URLSearchParams({ dao_address: daoAddress }),
+                { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+            );
+            setJoinResult(response.data.message);
+            // Fetch proposals after joining
+            fetchProposals();
+        } catch (error) {
+            setJoinResult(error.response?.data?.error || "Sorry, we couldn not join the DAO. Please try again!");
+            console.error("Join DAO error:", error);
+        }
+    };
+
+    // Function to create a proposal
+    // Sends the DAO address and proposal description to the backend (/api/create_proposal).
+    const createProposal = async (e) => {
+        e.preventDefault();
+        if (!account) return alert("Please log in!");
+        if (!daoAddress) return alert("Please enter a DAO address!");
+        if (!proposalDescription) return alert("Please enter a proposal description!");
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/api/create_proposal`,
+                new URLSearchParams({ dao_address: daoAddress, description: proposalDescription }),
+                { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+            );
+            setProposalResult(response.data.message);
+            setProposalDescription(""); // Clear the input
+            // Refresh proposals
+            fetchProposals();
+        } catch (error) {
+            setProposalResult(error.response?.data?.error || "Sorry, we couldn’t create your proposal. Please try again!");
+            console.error("Create proposal error:", error);
+        }
+    };
+
+    // Function to vote on a proposal
+    // Sends the DAO address, proposal ID, and vote choice to the backend (/api/vote).
+    const voteOnProposal = async (proposalId, voteChoice) => {
+        if (!account) return alert("Please log in!");
+        if (!daoAddress) return alert("Please enter a DAO address!");
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/api/vote`,
+                new URLSearchParams({ dao_address: daoAddress, proposal_id: proposalId, vote: voteChoice }),
+                { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+            );
+            setVoteResult(response.data.message);
+            // Refresh proposals
+            fetchProposals();
+        } catch (error) {
+            setVoteResult(error.response?.data?.error || "Sorry, we couldn’t record your vote. Please try again!");
+            console.error("Vote error:", error);
+        }
+    };
+
+    // Function to fetch proposals for a DAO
+    // Calls the backend (/api/get_proposals) to retrieve all proposals.
+    const fetchProposals = async () => {
+        if (!daoAddress) return;
+        try {
+            const response = await axios.post(
+                `${BASE_URL}/api/get_proposals`,
+                new URLSearchParams({ dao_address: daoAddress }),
+                { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+            );
+            setProposals(response.data.proposals || []);
+        } catch (error) {
+            console.error("Fetch proposals error:", error);
+            setProposals([]);
+        }
+    };
+
     // Function to ask a crypto-related question
+    // Sends a question to the backend (/api/query) and displays the LLM's answer.
     const askQuery = async (e) => {
         e.preventDefault();
         if (!account) return alert("Please log in!");
@@ -89,6 +204,7 @@ function Dashboard({ account, logout, subscription }) {
     };
 
     // Load initial data (news, coins, analytics, graph) when account changes
+    // Fetches data from the backend to populate the dashboard with news, top coins, analytics, and Bitcoin price graph.
     useEffect(() => {
         let mounted = true;
         axios.get(`${BASE_URL}/api/`).then((res) => {
@@ -125,6 +241,7 @@ function Dashboard({ account, logout, subscription }) {
     }, [account]);
 
     // Welcome banner for paid users
+    // Displays a banner for Basic or Pro plan users with their plan benefits.
     const welcomeBanner = subscription !== "free" ? (
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-lg shadow-lg mb-6 text-center">
             <p className="text-lg text-white">
@@ -150,6 +267,7 @@ function Dashboard({ account, logout, subscription }) {
             {welcomeBanner}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
+                    {/* Form to create a smart contract */}
                     <form onSubmit={createContract} className="mb-4">
                         <input
                             type="text"
@@ -163,6 +281,127 @@ function Dashboard({ account, logout, subscription }) {
                         </button>
                     </form>
                     {contractResult && <p className="text-accent mb-4">{contractResult}</p>}
+
+                    {/* Section explaining DAOs and form to create a DAO */}
+                    <div className="bg-gray-800 p-4 rounded mb-4">
+                        <h2 className="text-xl font-bold text-primary">What is a DAO?</h2>
+                        <p className="text-accent">
+                            A DAO (Decentralized Autonomous Organization) is like an online club or group you control with blockchain! It lets you set rules and work together with others, all without a middleman. Create one to manage a project, a community, or even a small business idea!
+                        </p>
+                        <p className="text-accent mt-2">
+                            Just pick a name and describe what your group is for, dont worry we will handle the tech stuff!
+                        </p>
+                        <form onSubmit={createDao} className="mt-4">
+                            <label className="block text-accent mb-1">Group Name (e.g., 'MyArtClub' or 'FamilyFund')</label>
+                            <input
+                                type="text"
+                                value={daoName}
+                                onChange={(e) => setDaoName(e.target.value)}
+                                placeholder="e.g., MyArtClub"
+                                className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                            />
+                            <label className="block text-accent mb-1">What is Your Group About? (e.g., 'A group for artists')</label>
+                            <textarea
+                                value={daoDescription}
+                                onChange={(e) => setDaoDescription(e.target.value)}
+                                placeholder="e.g., A group for artists to share work"
+                                className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                            />
+                            <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                                Start My Group
+                            </button>
+                        </form>
+                        {daoResult && (
+                            <p className={daoResult.includes("DAO Created!") ? "text-green-400" : "text-red-400"}>{daoResult}</p>
+                        )}
+                        {daoResult.includes("DAO Created!") && (
+                            <p className="text-accent mt-2">
+                                Great job! Your group is live at {daoResult.split("Address: ")[1]}. Share this with friends to join!
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Section to join a DAO and manage proposals */}
+                    <div className="bg-gray-800 p-4 rounded mb-4">
+                        <h2 className="text-xl font-bold text-primary">Join & Manage Your Group</h2>
+                        <p className="text-accent">
+                            Enter your DAO address to join as a member, propose ideas, and vote on decisions!
+                        </p>
+                        <form onSubmit={joinDao} className="mt-4">
+                            <label className="block text-accent mb-1">DAO Address (e.g., 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853)</label>
+                            <input
+                                type="text"
+                                value={daoAddress}
+                                onChange={(e) => setDaoAddress(e.target.value)}
+                                placeholder="e.g., 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853"
+                                className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                            />
+                            <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                                Join Group
+                            </button>
+                        </form>
+                        {joinResult && (
+                            <p className={joinResult.includes("Joined DAO") ? "text-green-400" : "text-red-400"}>{joinResult}</p>
+                        )}
+                        {joinResult.includes("Joined DAO") && (
+                            <>
+                                {/* Form to create a proposal */}
+                                <form onSubmit={createProposal} className="mt-4">
+                                    <label className="block text-accent mb-1">Propose an Idea (e.g., 'Host an art event')</label>
+                                    <input
+                                        type="text"
+                                        value={proposalDescription}
+                                        onChange={(e) => setProposalDescription(e.target.value)}
+                                        placeholder="e.g., Host an art event"
+                                        className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                                    />
+                                    <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
+                                        Propose Idea
+                                    </button>
+                                </form>
+                                {proposalResult && (
+                                    <p className={proposalResult.includes("Proposal created!") ? "text-green-400" : "text-red-400"}>{proposalResult}</p>
+                                )}
+                                {/* List of proposals */}
+                                <div className="mt-4">
+                                    <h3 className="text-lg font-bold text-primary">Group Ideas</h3>
+                                    {proposals.length > 0 ? (
+                                        proposals.map((proposal) => (
+                                            <div key={proposal.id} className="bg-gray-700 p-3 rounded mt-2">
+                                                <p><strong>Idea #{proposal.id}:</strong> {proposal.description}</p>
+                                                <p>Proposed by: {proposal.proposer.slice(0, 6)}...{proposal.proposer.slice(-4)}</p>
+                                                <p>Votes: Yes ({proposal.yesVotes}) | No ({proposal.noVotes})</p>
+                                                <p>Status: {proposal.active ? "Voting Open" : "Voting Closed"}</p>
+                                                {proposal.active && (
+                                                    <div className="mt-2">
+                                                        <button
+                                                            onClick={() => voteOnProposal(proposal.id, true)}
+                                                            className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded mr-2"
+                                                        >
+                                                            Vote Yes
+                                                        </button>
+                                                        <button
+                                                            onClick={() => voteOnProposal(proposal.id, false)}
+                                                            className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded"
+                                                        >
+                                                            Vote No
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-accent">No ideas yet—propose one above!</p>
+                                    )}
+                                </div>
+                                {voteResult && (
+                                    <p className={voteResult.includes("Voted") ? "text-green-400" : "text-red-400"}>{voteResult}</p>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* Wallet analytics display */}
                     {analytics && (
                         <div className="bg-gray-800 p-4 rounded">
                             <h2 className="text-xl font-bold text-primary">Wallet Analytics</h2>
@@ -179,6 +418,7 @@ function Dashboard({ account, logout, subscription }) {
                     )}
                 </div>
                 <div>
+                    {/* Form to ask crypto-related questions */}
                     <form onSubmit={askQuery} className="mb-4">
                         <input
                             type="text"
@@ -192,6 +432,8 @@ function Dashboard({ account, logout, subscription }) {
                         </button>
                     </form>
                     {queryResult && <p className="text-accent mb-4">{queryResult}</p>}
+
+                    {/* Bitcoin price graph */}
                     {graphData && (
                         <div className="bg-gray-800 p-4 rounded">
                             <h2 className="text-xl font-bold text-primary">Bitcoin Price (7 Days)</h2>
@@ -200,6 +442,7 @@ function Dashboard({ account, logout, subscription }) {
                     )}
                 </div>
             </div>
+            {/* Top coins section */}
             <div className="mt-4">
                 <h2 className="text-xl font-bold text-primary">Top Coins</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -213,6 +456,7 @@ function Dashboard({ account, logout, subscription }) {
                     ))}
                 </div>
             </div>
+            {/* Latest news section */}
             <div className="mt-4">
                 <h2 className="text-xl font-bold text-primary">Latest News</h2>
                 {news.map((item, idx) => (
@@ -226,10 +470,12 @@ function Dashboard({ account, logout, subscription }) {
 }
 
 // Subscribe component: Handles subscription plans (Stripe and ETH)
+// Allows users to subscribe to Basic or Pro plans using Stripe (card) or ETH payments.
 function Subscribe({ account, subscription, setSubscription }) {
     const navigate = useNavigate();
 
     // Stripe payment handler
+    // Initiates a Stripe checkout session for the selected plan and redirects to Stripe's payment page.
     const handleStripeSubscribe = async (plan) => {
         if (!account) return alert("Please log in!");
         try {
@@ -246,6 +492,7 @@ function Subscribe({ account, subscription, setSubscription }) {
     };
 
     // ETH payment handler - Basic: 0.005 ETH, Pro: 0.025 ETH (test values!)
+    // Sends an ETH transaction to the payment address and verifies it with the backend.
     const handleEthSubscribe = async (plan) => {
         if (!account) return alert("Please log in!");
         if (!window.ethereum) return alert("MetaMask required for ETH payment!");
@@ -320,10 +567,12 @@ function Subscribe({ account, subscription, setSubscription }) {
 }
 
 // Success component: Confirms subscription and redirects
+// Displays a success message after a subscription payment and redirects to the dashboard.
 function Success({ account, setAccount, subscription, setSubscription }) {
     const navigate = useNavigate();
 
     // Confirm subscription on load
+    // Verifies the subscription with the backend and updates the subscription state.
     useEffect(() => {
         const confirmSubscription = async () => {
             try {
@@ -353,6 +602,7 @@ function Success({ account, setAccount, subscription, setSubscription }) {
 }
 
 // Marketplace component: Placeholder for future features
+// A placeholder page for a future marketplace feature to browse and deploy smart contracts.
 function Marketplace() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -363,6 +613,7 @@ function Marketplace() {
 }
 
 // AboutUs component: Info about BlockSpeak
+// Provides information about the BlockSpeak project and its mission.
 function AboutUs() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -375,6 +626,7 @@ function AboutUs() {
 }
 
 // HowItWorks component: Simple guide to using BlockSpeak
+// Provides a brief guide on how to use BlockSpeak's features.
 function HowItWorks() {
     return (
         <div className="bg-dark text-white min-h-screen p-4">
@@ -389,6 +641,7 @@ function HowItWorks() {
 }
 
 // EmailSignup component: Collects emails for marketing
+// A form to collect email addresses for marketing purposes (backend TBD).
 function EmailSignup() {
     const [email, setEmail] = useState("");
     const handleSignup = async (e) => {
@@ -417,11 +670,13 @@ function EmailSignup() {
 }
 
 // Main App component: Sets up routing and state
+// The root component that manages routing, user state (account, subscription), and renders the app.
 function App() {
-    const [account, setAccount] = useState(localStorage.getItem("account") || null);
-    const [subscription, setSubscription] = useState("free");
+    const [account, setAccount] = useState(localStorage.getItem("account") || null); // User's wallet address
+    const [subscription, setSubscription] = useState("free"); // User's subscription plan (free, basic, pro)
 
     // Updates account state and localStorage
+    // Saves or removes the account from localStorage when the user logs in or out.
     const updateAccount = (newAccount) => {
         setAccount(newAccount);
         if (newAccount) localStorage.setItem("account", newAccount);
@@ -429,10 +684,12 @@ function App() {
     };
 
     // AppContent: Defines the layout and navigation
+    // Handles routing, navigation, and user authentication (login/logout).
     function AppContent() {
         const navigate = useNavigate();
 
         // Login with MetaMask
+        // Connects to MetaMask, signs a nonce, and authenticates with the backend.
         const loginWithMetaMask = async () => {
             if (!window.ethereum) return alert("Please install MetaMask!");
             try {
@@ -460,6 +717,7 @@ function App() {
         };
 
         // Logout function
+        // Logs the user out, clears the account and subscription state, and redirects to the home page.
         const logout = async () => {
             try {
                 await axios.get(`${BASE_URL}/api/logout`, { withCredentials: true });
