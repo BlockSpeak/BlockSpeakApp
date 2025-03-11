@@ -1,78 +1,88 @@
 # BlockSpeak.py
 # Pure JSON API Backend for BlockSpeak
-# ------------------------------------
 # This is the backend brain of BlockSpeak, serving data to our React frontend at https://blockspeak.co.
-# - Local: Runs at http://127.0.0.1:8080 with Hardhat for testing.
-# - Production: Runs at https://blockspeak.onrender.com with Ethereum Mainnet via Alchemy.
-# - No HTML here, just JSON responses for everything!
-# - Built by Brody and Grok together as OUR brand!
+# Local: Runs at http://127.0.0.1:8080 with Hardhat for testing.
+# Production: Runs at https://blockspeak.onrender.com with Ethereum Mainnet via Alchemy.
+# No HTML here, just JSON responses for everything!
+# Built by Brody and Grok together as OUR brand!
 
-# Imports: All the tools we need
-import os  # For file system stuff (e.g., paths, env variables)
-from dotenv import load_dotenv  # Loads secrets from .env file
-from flask import redirect  # HTTP redirect for non-API requests
-import re  # Regular expressions for parsing contract requests
-import json  # For working with JSON data (e.g., API responses)
-import sqlite3  # Our simple database for users
-from flask import Flask, request, session, jsonify  # Flask for the API (core framework)
+# Imports: All the tools we need to make BlockSpeak work
+import os  # For file system stuff like paths and env variables
+import json  # For working with JSON data like API responses to React
+import re  # Regular expressions for parsing contract requests like send 1 eth to...
+import sqlite3  # Our simple database for users to store emails and subscriptions
+import requests  # For fetching external data like news and prices from APIs
+import feedparser  # Parses RSS feeds for news like CoinTelegraph
+import logging  # Logs for debugging to see whats happening when things break
+import stripe  # Payment processing for subscriptions via Stripe for card payments
+import uuid  # Unique IDs for nonces to secure login with MetaMask
+from dotenv import load_dotenv  # Loads secrets from .env file to keep keys safe
+from flask import Flask  # Flask is our API engine
+from flask import request  # Grabs data from frontend requests
+from flask import session  # Stores temporary data like nonces
+from flask import jsonify  # Makes JSON responses for React
+from flask import redirect  # HTTP redirect for non-API requests to frontend
+from web3 import Web3 as Web3Py  # Blockchain interaction to connect to Hardhat or Mainnet
+from openai import OpenAI  # ChatGPT integration for answering crypto questions
+from datetime import datetime  # Time handling for caching data
+from datetime import timedelta  # Helps calculate time differences
+from datetime import timezone  # Ensures times are UTC
 from flask_cors import CORS  # Lets React talk to us from different domains
-import requests  # For fetching external data (news, prices)
-from openai import OpenAI  # ChatGPT integration for crypto questions
-import feedparser  # Parses RSS feeds for news
-from datetime import datetime, timedelta, timezone  # Time handling (e.g., caching)
-import logging  # Logs for debugging (see whats happening)
-import stripe  # Payment processing for subscriptions
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user  # User sessions
-from werkzeug.security import generate_password_hash, check_password_hash  # Password security
-from eth_account.messages import encode_defunct  # For MetaMask login
-from web3 import Web3 as Web3Py  # Blockchain interaction (Hardhat or Mainnet)
-import uuid  # Unique IDs for nonces (secure login)
+from web3.exceptions import ContractLogicError  # Catches blockchain reverts like Already a member
+from flask_login import LoginManager  # Manages user sessions
+from flask_login import UserMixin  # Base class for User objects
+from flask_login import login_user  # Logs users in
+from flask_login import login_required  # Restricts routes to logged-in users
+from flask_login import logout_user  # Logs users out
+from flask_login import current_user  # Tracks the current logged-in user
+from eth_account.messages import encode_defunct  # For MetaMask login signing messages
+from werkzeug.security import generate_password_hash  # Secures passwords
+from werkzeug.security import check_password_hash  # Checks hashed passwords
 
-# Load .env (keep this file out of Git!)
-# Our secrets (API keys, private keys) live here updated to point to skillchain_contracts folder
+# Load .env to keep this file out of Git!
+# Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
 load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/server/skillchain_contracts/.env")
 
 # NETWORK decides if we are testing locally or live:
-# - "hardhat": Local blockchain at http://127.0.0.1:8545 for testing.
-# - "mainnet": Ethereum Mainnet via Alchemy for production.
-NETWORK = os.getenv("NETWORK", "hardhat")
+# hardhat: Local blockchain at http://127.0.0.1:8545 for testing with fake ETH
+# mainnet: Ethereum Mainnet via Alchemy for production with real ETH
+NETWORK = os.getenv("NETWORK", "hardhat")  # Defaults to hardhat if not set in .env
 if NETWORK == "hardhat":
-    w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))
+    w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))  # Connects to local Hardhat node
 elif NETWORK == "mainnet":
-    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
+    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))  # Connects to Mainnet via Alchemy
 else:
-    raise ValueError(f"Unsupported NETWORK: {NETWORK}")
+    raise ValueError(f"Unsupported NETWORK: {NETWORK}")  # Oops, typo in .env? Crash with a message!
 
-# ETH payment address - replace with your real wallet for live!
-ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")
-# ETH subscription prices (test values - adjust for live ETH price, e.g., $2000/ETH)
-BASIC_PLAN_ETH = 0.005  # ~$10
-PRO_PLAN_ETH = 0.025    # ~$50
+# ETH payment address where users send ETH for subscriptions
+ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")  # Default is a test wallet, update for live
+# ETH subscription prices as test values, adjust for live ETH price like $2000 per ETH
+BASIC_PLAN_ETH = 0.005  # About $10 in test mode
+PRO_PLAN_ETH = 0.025    # About $50 in test mode
 
-# Set up Flask app
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")  # Secret for sessions (secure cookies)
+# Set up Flask app, this is our servers engine
+app = Flask(__name__)  # Creates the Flask app
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")  # Secret for sessions to secure cookies, update in .env for prod
 app.config.update(
-    SESSION_TYPE="memory",  # Store sessions in memory (temporary)
-    SESSION_PERMANENT=False,  # Sessions dont last forever
-    SESSION_COOKIE_SAMESITE="None",  # Allow cross-origin cookies (React frontend)
-    SESSION_COOKIE_SECURE=True  # Only HTTPS cookies (secure in production)
+    SESSION_TYPE="memory",  # Store sessions in memory, good for testing
+    SESSION_PERMANENT=False,  # Sessions dont last forever, log out when browser closes
+    SESSION_COOKIE_SAMESITE="None",  # Allow cross-origin cookies, React frontend needs this
+    SESSION_COOKIE_SECURE=True  # Only HTTPS cookies, secure in production
 )
-# CORS: Lets our React app at blockspeak.co (or localhost:3000 for testing) talk to the backend
+# CORS: Lets our React app at blockspeak.co or localhost:3000 for testing talk to the backend
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
-logging.basicConfig(level=logging.INFO)  # Log info for debugging (e.g., see requests)
+logging.basicConfig(level=logging.INFO)  # Log info for debugging to see requests in terminal
 
-# Load API keys and Stripe secrets
-# These come from our .env file used for external services
-ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")  # For blockchain connections
+# Load API keys and Stripe secrets from .env
+ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")  # For blockchain connections on Mainnet
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")    # For ChatGPT answers
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")  # For Stripe payments
-STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")  # Frontend Stripe key
-stripe.api_key = STRIPE_SECRET_KEY  # Set Stripe API key
-client = OpenAI(api_key=OPENAI_API_KEY)  # Initialize OpenAI client
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")  # For Stripe payments on backend
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY")  # Frontend Stripe key, React uses this
+stripe.api_key = STRIPE_SECRET_KEY  # Set Stripe API key for payments
+client = OpenAI(api_key=OPENAI_API_KEY)  # Initialize OpenAI client for ChatGPT
 
 # Set up Flask-Login for managing user sessions
-# Keeps track of whos logged in (email or MetaMask address)
+# Keeps track of whos logged in with email or MetaMask address
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -80,63 +90,63 @@ login_manager.init_app(app)
 def init_db():
     # Creates the users table if it doesnt exist
     # Stores user email, password, subscription, Stripe ID, and query history
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
+    conn = sqlite3.connect("users.db")  # Connects to users.db file
+    c = conn.cursor()  # Cursor to run SQL commands
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-        subscription TEXT DEFAULT 'free', stripe_customer_id TEXT, history TEXT DEFAULT '[]')''')
-    conn.commit()
-    conn.close()
+        subscription TEXT DEFAULT 'free', stripe_customer_id TEXT, history TEXT DEFAULT '[]')''')  # Creates table structure
+    conn.commit()  # Saves changes
+    conn.close()  # Closes connection
 
-init_db()
+init_db()  # Runs the setup right away
 
 # User class for Flask-Login
 class User(UserMixin):
     # Represents a user with email, subscription, Stripe ID, and history
     def __init__(self, email, subscription="free", stripe_customer_id=None, history=None):
-        self.email = email  # Email or wallet address
+        self.email = email  # Email or wallet address like 0x123...
         self.subscription = subscription  # Free, basic, or pro
         self.stripe_customer_id = stripe_customer_id  # For Stripe payments
-        self.history = json.loads(history) if history else []  # Users query history
+        self.history = json.loads(history) if history else []  # Users query history, last 3 questions
     def get_id(self):
-        return self.email  # Unique ID is the email (or wallet address for MetaMask)
+        return self.email  # Unique ID is the email or wallet address
 
 @login_manager.user_loader
 def load_user(email):
-    # Loads a user from the database by email
+    # Loads a user from the database by email when Flask-Login needs them
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (email,))
-    user_data = c.fetchone()
+    user_data = c.fetchone()  # Grabs one row if it exists
     conn.close()
     if user_data:
-        return User(user_data[0], user_data[1], user_data[2], user_data[3])
-    return None
+        return User(user_data[0], user_data[1], user_data[2], user_data[3])  # Returns User object
+    return None  # No user found? Return None
 
 def save_user_history(email, history):
     # Saves the users last 3 queries to the database
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("UPDATE users SET history = ? WHERE email = ?", (json.dumps(history[:3]), email))
+    c.execute("UPDATE users SET history = ? WHERE email = ?", (json.dumps(history[:3]), email))  # Keeps only 3 latest
     conn.commit()
     conn.close()
 
 # Utility Functions: Helpers for our logic
 def is_bitcoin_address(text):
-    # Checks if text is a Bitcoin address (starts with 1, 3, or bc1, length 26-35)
+    # Checks if text is a Bitcoin address, starts with 1, 3, or bc1, length 26 to 35
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
 
 def is_wallet_address(text):
-    # Checks if text is an Ethereum address (starts with 0x, length 42)
+    # Checks if text is an Ethereum address, starts with 0x, length 42
     return text.startswith("0x") and len(text) == 42
 
 def is_solana_address(text):
-    # Checks if text is a Solana address (length 44, specific characters)
+    # Checks if text is a Solana address, length 44, specific characters
     return len(text) == 44 and all(c in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz" for c in text)
 
 def normalize_question(text):
     # Turns user questions into standard formats for easier handling
-    # Helps decide how to answer (e.g., price, analytics, or ChatGPT)
+    # Helps decide how to answer like price, analytics, or ChatGPT
     text = text.lower().strip()
     if "predict" in text or "price in" in text: return "price_prediction"
     if "gas" in text: return "gas"
@@ -146,15 +156,15 @@ def normalize_question(text):
     return text
 
 def get_crypto_price(coin):
-    # Fetches current price from CoinCap API (e.g., Bitcoin, Ethereum)
+    # Fetches current price from CoinCap API like Bitcoin or Ethereum
     url = f"https://api.coincap.io/v2/assets/{coin}"
     try:
         response = requests.get(url).json()
         price = float(response["data"]["priceUsd"])
-        return f"{price:.2f}"
+        return f"{price:.2f}"  # Returns price formatted to 2 decimals
     except Exception as e:
         app.logger.error(f"CoinCap price fetch failed for {coin}: {str(e)}")
-        return "Price unavailable"
+        return "Price unavailable"  # Fallback if API fails
 
 def get_trending_crypto():
     # Gets top 3 trending coins by volume from CoinCap
@@ -165,7 +175,7 @@ def get_trending_crypto():
         return [{"topic": coin["name"], "snippet": f"Volume 24h: ${int(float(coin['volumeUsd24Hr'])):,}", "link": f"https://coincap.io/assets/{coin['id']}"} for coin in response["data"]]
     except Exception as e:
         app.logger.error(f"CoinCap trending fetch failed: {str(e)}")
-        return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]
+        return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]  # Fallback if API fails
 
 def get_x_profiles():
     # Returns static list of crypto X profiles
@@ -175,18 +185,18 @@ def get_x_profiles():
 def get_news_items():
     # Fetches latest crypto news from RSS feeds
     # Used for the home page news section
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}  # Pretends to be a browser
     urls = ["https://coinjournal.net/feed/", "https://cointelegraph.com/rss"]
     for url in urls:
         try:
             response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
+            response.raise_for_status()  # Checks if request worked
             feed = feedparser.parse(response.content)
-            if not feed.entries: continue
-            return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]
+            if not feed.entries: continue  # Skip if no news items
+            return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]  # Top 3 news items
         except requests.RequestException as e:
             app.logger.error(f"RSS fetch failed for {url}: {str(e)}")
-    return [{"title": "News unavailable - check back later!", "link": "#"}]
+    return [{"title": "News unavailable, check back later!", "link": "#"}]  # Fallback if all feeds fail
 
 def get_wallet_analytics(address):
     # Gets wallet stats for Bitcoin, Ethereum, or Solana
@@ -196,7 +206,7 @@ def get_wallet_analytics(address):
         try:
             btc_url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance"
             btc_response = requests.get(btc_url).json()
-            balance_btc = btc_response.get("balance", 0) / 1e8
+            balance_btc = btc_response.get("balance", 0) / 1e8  # Converts satoshis to BTC
             tx_count = btc_response.get("n_tx", 0)
             analytics = {"chain": "Bitcoin", "balance": f"{balance_btc:.8f} BTC", "tx_count": tx_count, "gas_spent": "N/A", "top_tokens": "N/A", "hot_wallet": "Yes" if tx_count > 50 else "No"}
         except Exception as e:
@@ -204,26 +214,16 @@ def get_wallet_analytics(address):
             return {"error": "Could not fetch Bitcoin analytics"}
     elif is_wallet_address(address):
         try:
-            checksum_address = w3.to_checksum_address(address)
+            checksum_address = w3.to_checksum_address(address)  # Ensures address is properly formatted
             balance_wei = w3.eth.get_balance(checksum_address)
-            balance_eth = balance_wei / 1e18
+            balance_eth = balance_wei / 1e18  # Converts Wei to ETH
             tx_count = w3.eth.get_transaction_count(checksum_address)
             top_tokens = "ETH only"  # Default for Hardhat
             if NETWORK == "mainnet":  # Only check USDT on Mainnet
                 usdt_contract = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
-                usdt_balance = w3.eth.call({
-                    "to": usdt_contract,
-                    "data": f"0x70a08231000000000000000000000000{checksum_address[2:]}"
-                }) / 1e6
+                usdt_balance = w3.eth.call({"to": usdt_contract, "data": f"0x70a08231000000000000000000000000{checksum_address[2:]}"})/ 1e6  # USDT balance call
                 top_tokens = f"ETH, USDT ({usdt_balance:.2f})" if usdt_balance > 0 else "ETH only"
-            analytics = {
-                "chain": "Ethereum",
-                "balance": f"{balance_eth:.4f} ETH",
-                "tx_count": tx_count,
-                "gas_spent": "N/A",  # Placeholder - no gas calc yet
-                "top_tokens": top_tokens,
-                "hot_wallet": "Yes" if tx_count > 50 else "No"
-            }
+            analytics = {"chain": "Ethereum", "balance": f"{balance_eth:.4f} ETH", "tx_count": tx_count, "gas_spent": "N/A", "top_tokens": top_tokens, "hot_wallet": "Yes" if tx_count > 50 else "No"}
             return analytics
         except Exception as e:
             app.logger.error(f"ETH analytics failed for {address}: {str(e)}")
@@ -235,7 +235,7 @@ def get_wallet_analytics(address):
             balance_response = requests.post(sol_url, json=payload).json()
             if "result" not in balance_response:
                 return {"error": "Invalid Solana address"}
-            balance_sol = balance_response["result"]["value"] / 1e9
+            balance_sol = balance_response["result"]["value"] / 1e9  # Converts lamports to SOL
             payload = {"jsonrpc": "2.0", "method": "getSignaturesForAddress", "params": [address, {"limit": 1000}], "id": 1}
             tx_response = requests.post(sol_url, json=payload).json()
             if "result" not in tx_response:
@@ -251,7 +251,7 @@ def get_wallet_analytics(address):
     return analytics
 
 def get_historical_balance(address, chain):
-    # Gets 30-day balance history for a wallet - not implemented yet
+    # Gets 30-day balance history for a wallet, not implemented yet as a future feature!
     pass
 
 def get_top_coins():
@@ -263,7 +263,7 @@ def get_top_coins():
         with open(cache_file, "r") as f:
             cached = json.load(f)
         if datetime.fromisoformat(cached["timestamp"]) > now - timedelta(minutes=15):
-            return cached["data"]
+            return cached["data"]  # Returns cached data if less than 15 mins old
     coin_ids = ["bitcoin", "ethereum", "solana"]
     coins = []
     url = "https://api.coincap.io/v2/assets"
@@ -283,7 +283,7 @@ def get_top_coins():
                           "price": f"{float(random_coin['priceUsd']):.2f}", "market_cap": f"{int(float(random_coin['marketCapUsd'])):,}",
                           "change": round(float(random_coin["changePercent24Hr"]), 2), "graph_color": "#2ecc71" if float(random_coin["changePercent24Hr"]) > 0 else "#e74c3c"})
         with open(cache_file, "w") as f:
-            json.dump({"data": coins, "timestamp": now.isoformat()}, f)
+            json.dump({"data": coins, "timestamp": now.isoformat()}, f)  # Caches new data
         return coins
     except Exception as e:
         app.logger.error(f"CoinCap top coins failed: {str(e)}")
@@ -297,7 +297,7 @@ def get_coin_graph(coin_id):
     # Used for the price graph on the dashboard
     cache_key = f"coin_graph_{coin_id}"
     if cache_key in session and session[cache_key]["timestamp"] > datetime.now(timezone.utc) - timedelta(minutes=5):
-        return session[cache_key]["data"]
+        return session[cache_key]["data"]  # Returns cached graph if less than 5 mins old
     url = f"https://api.coincap.io/v2/assets/{coin_id}/history?interval=d1&start={(int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000))}&end={(int(datetime.now(timezone.utc).timestamp() * 1000))}"
     try:
         response = requests.get(url).json()
@@ -322,7 +322,7 @@ def get_coin_graph(coin_id):
         return graph_data
 
 def predict_price(coin, days):
-    # Predicts future price based on 30-day trend - not implemented yet
+    # Predicts future price based on 30-day trend, not implemented yet as a future feature!
     pass
 
 # API Routes: Where the magic happens!
@@ -330,10 +330,10 @@ def predict_price(coin, days):
 def get_nonce():
     # Gives React a nonce for secure MetaMask login
     # A random ID to ensure login is legit
-    nonce = str(uuid.uuid4())
-    session["nonce"] = nonce
+    nonce = str(uuid.uuid4())  # Generates a unique string
+    session["nonce"] = nonce  # Stores it in the session
     app.logger.info(f"Generated nonce: {nonce}")
-    return nonce
+    return nonce  # Sends it to the frontend
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -342,25 +342,25 @@ def register():
     email = request.form.get("email")
     password = request.form.get("password")
     if not email or "@" not in email or "." not in email:
-        return jsonify({"error": "Invalid email"}), 400
+        return jsonify({"error": "Invalid email"}), 400  # Checks for valid email format
     if len(password) < 8:
-        return jsonify({"error": "Password too short"}), 400
+        return jsonify({"error": "Password too short"}), 400  # Ensures password is strong
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     try:
-        hashed_password = generate_password_hash(password)
+        hashed_password = generate_password_hash(password)  # Hashes password for security
         c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, hashed_password))
         conn.commit()
-        customer = stripe.Customer.create(email=email)
+        customer = stripe.Customer.create(email=email)  # Creates a Stripe customer
         c.execute("UPDATE users SET stripe_customer_id = ? WHERE email = ?", (customer["id"], email))
         conn.commit()
         user = User(email)
-        login_user(user)
+        login_user(user)  # Logs them in right away
         return jsonify({"success": True, "message": "Registered!", "email": email})
     except sqlite3.IntegrityError:
-        return jsonify({"error": "Email taken"}), 400
+        return jsonify({"error": "Email taken"}), 400  # Email already exists
     except stripe.error.StripeError as e:
-        return jsonify({"error": "Stripe failed"}), 500
+        return jsonify({"error": "Stripe failed"}), 500  # Stripe issue
     finally:
         conn.close()
 
@@ -379,7 +379,7 @@ def login():
         user = User(user_data[0], user_data[2], user_data[3], user_data[4])
         login_user(user)
         return jsonify({"success": True, "message": "Logged in!", "email": email})
-    return jsonify({"error": "Wrong credentials"}), 400
+    return jsonify({"error": "Wrong credentials"}), 400  # Bad email or password
 
 @app.route("/api/logout")
 @login_required
@@ -410,7 +410,7 @@ def login_metamask():
             c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (address,))
             user_data = c.fetchone()
             if not user_data:
-                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))
+                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))  # Dummy password for MetaMask users
                 conn.commit()
                 user = User(address)
             else:
@@ -418,7 +418,7 @@ def login_metamask():
             login_user(user)
             conn.close()
             return jsonify({"success": True, "address": address})
-        return jsonify({"error": "Invalid signature"}), 401
+        return jsonify({"error": "Invalid signature"}), 401  # Signature doesnt match
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
 
@@ -426,14 +426,14 @@ def login_metamask():
 @login_required
 def create_contract():
     # Creates a smart contract based on user input
-    # Deploys a recurring payment contract if the request matches (e.g., "send 1 eth to 0x...")
+    # Deploys a recurring payment contract if the request matches like "send 1 eth to 0x..."
     contract_request = request.form.get("contract_request")
     if not contract_request:
         return jsonify({"error": "No request"}), 400
-    w3_py = w3  # Use global w3 (Hardhat or Mainnet)
+    w3_py = w3  # Use global w3 for Hardhat or Mainnet
     if not w3_py.is_connected():
         return jsonify({"error": "Blockchain not connected"}), 500
-    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email
+    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email  # Hardhat default or user wallet
     sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
     if not sender_private_key:
         return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
@@ -453,7 +453,7 @@ def create_contract():
         })
         signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
         try:
-            tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)  # Fixed from rawTransaction
+            tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
             tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
             contract_address = tx_receipt.contractAddress
             message = f"Success! Sent {amount} ETH to {recipient}" + (f" every {frequency}" if frequency != "once" else "")
@@ -465,7 +465,7 @@ def create_contract():
 @app.route("/api/create_dao", methods=["POST"])
 @login_required
 def create_dao():
-    # Creates a decentralized autonomous organization (DAO) based on user input
+    # Creates a decentralized autonomous organization DAO based on user input
     dao_name = request.form.get("dao_name")
     dao_description = request.form.get("dao_description")
     if not dao_name or not dao_description:
@@ -506,116 +506,86 @@ def create_dao():
         app.logger.error(f"DAO creation failed: {str(e)}")
         return jsonify({"error": f"DAO creation failed: {str(e)}"}), 500
 
-        # Create contract instance and deploy
-        DAO = w3_py.eth.contract(abi=DAO_ABI, bytecode=DAO_BYTECODE)
-        tx = DAO.constructor(dao_name, dao_description).build_transaction({
-            "from": sender_address,
-            "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 2000000,
-            "gasPrice": w3_py.to_wei("50", "gwei")
-        })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)  # Fixed from rawTransaction
-        receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
-        dao_address = receipt.contractAddress
-
-        app.logger.info(f"DAO created: Name={dao_name}, Address={w3_py.to_checksum_address(dao_address)}")
-        return jsonify({"message": f"DAO Created! Name: {dao_name}, Address={w3_py.to_checksum_address(dao_address)}"}), 201
-    except FileNotFoundError:
-        return jsonify({"error": "DAO contract artifact missing"}), 500
-    except Exception as e:
-        app.logger.error(f"DAO creation failed: {str(e)}")
-        return jsonify({"error": f"DAO creation failed: {str(e)}"}), 500
-
 @app.route("/api/join_dao", methods=["POST"])
 @login_required
 def join_dao():
-    # Allows a user to join an existing DAO
-    # Calls the join() function on the DAO contract to add the user as a member
-    dao_address = request.form.get("dao_address")
+    # Allows a user to join an existing DAO like joining a cool club on the blockchain!
+    # Calls the join() function on the DAO contract to add the user as a member.
+    # If they are already in like the creator, we will tell them nicely instead of crashing.
+    dao_address = request.form.get("dao_address")  # The DAO special address like its house number
     if not dao_address or not is_wallet_address(dao_address):
-        return jsonify({"error": "Valid DAO address required"}), 400
+        # Make sure they gave us a real Ethereum address!
+        return jsonify({"error": "Please give me a valid DAO address (starts with 0x, 42 characters)!"}), 400
 
     try:
-        # Use the global w3 instance (Hardhat or Mainnet)
+        # Use the global w3 instance, our blockchain helper, Hardhat for testing, Mainnet for real stuff
         w3_py = w3
         if not w3_py.is_connected():
-            return jsonify({"error": "Blockchain not connected"}), 500
+            # Check if we can talk to the blockchain, Hardhat or Mainnet
+            return jsonify({"error": "Oops! The blockchain is not answering right now."}), 500
 
-        # Convert addresses to checksum format
-        checksum_dao_address = w3_py.to_checksum_address(dao_address)
-        sender_address = w3_py.to_checksum_address(current_user.email)  # MetaMask address
+        # Convert addresses to checksum format for fancy formatting and safety
+        checksum_dao_address = w3_py.to_checksum_address(dao_address)  # The DAO address, all neat
+        sender_address = w3_py.to_checksum_address(current_user.email)  # Your MetaMask wallet address, logged-in user
         sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
         if not sender_private_key:
-            return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
+            # We need a secret key to sign the transaction like a password for your wallet
+            return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'} in our secrets file!"}), 500
 
-        # Load DAO contract artifact
+        # Load DAO contract artifact, the blueprint of our DAO toy box
         with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
-        DAO_ABI = dao_artifact["abi"]
+        DAO_ABI = dao_artifact["abi"]  # The instructions for talking to the DAO like a manual
 
-        # Create contract instance
+        # Create contract instance to connect to the DAO at its address
         dao_contract = w3_py.eth.contract(address=checksum_dao_address, abi=DAO_ABI)
 
-        # Build and send the join transaction
+        # Build the join transaction like knocking on the DAO door
         tx = dao_contract.functions.join().build_transaction({
-            "from": sender_address,
-            "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 200000,
-            "gasPrice": w3_py.to_wei("50", "gwei")
+            "from": sender_address,  # You are the one joining!
+            "nonce": w3_py.eth.get_transaction_count(sender_address),  # How many times you have sent stuff to prevent duplicates
+            "gas": 200000,  # Fuel for the transaction, enough for join() on Hardhat or Mainnet
+            "gasPrice": w3_py.to_wei("50", "gwei")  # How much you are paying per gas unit, 50 gwei works for testing
         })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)  # Sign it with your key to prove it is you
 
-        # Wait for receipt and handle revert
-        try:
-            receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
-            if receipt.status == 1:  # Success
-                app.logger.info(f"User {sender_address} joined DAO at {checksum_dao_address}")
-                return jsonify({"message": f"Joined DAO at {checksum_dao_address}", "status": "success"}), 200
-            else:  # Failed (reverted)
-                raise ValueError("Transaction reverted")  # Trigger revert check
-        except ValueError as e:
-            # Check revert reason by simulating the call
+        # Send the transaction and handle the response
+        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)  # Send it to the blockchain!
+        receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)  # Wait for blockchain to process like waiting for a receipt
+        if receipt.status == 1:  # Success, transaction worked!
+            app.logger.info(f"User {sender_address} joined DAO at {checksum_dao_address}")
+            return jsonify({"message": f"You are in! Welcome to the DAO at {checksum_dao_address}", "status": "success"}), 200
+        else:
+            # Transaction failed, reverted, probably because they are already a member
+            app.logger.info(f"Join attempt reverted for {sender_address} on DAO {checksum_dao_address}")
+            # Simulate the call to get the exact revert reason without spending more gas
             try:
-                dao_contract.caller({"from": sender_address}).join()
-                # If call succeeds, something else went wrong
-                return jsonify({"error": "Unexpected transaction failure"}), 400
-            except Exception as call_error:
-                revert_reason = str(call_error)
-                if "Already a member" in revert_reason:
-                    return jsonify({"message": "You are already a member of this DAO!", "status": "info"}), 200
+                dao_contract.caller({"from": sender_address}).join()  # Dry run to check why it failed
+                # If this succeeds, something weird happened, log it as an error
+                return jsonify({"error": "Join failed unexpectedly, contact support"}), 400
+            except ContractLogicError as cle:
+                revert_reason = str(cle).lower()  # Get the reason like "already a member"
+                if "already a member" in revert_reason:
+                    app.logger.info(f"User {sender_address} tried to join DAO {checksum_dao_address} but is already a member")
+                    return jsonify({"message": "You are already a member of this DAO! No need to join again.", "status": "info"}), 200
                 else:
-                    return jsonify({"error": f"Failed to join DAO: {revert_reason}"}), 400
+                    app.logger.error(f"Join DAO failed with unexpected revert: {revert_reason}")
+                    return jsonify({"error": f"Could not join the DAO: {revert_reason}"}), 400
+
+    except ContractLogicError as cle:
+        # Catch reverts that happen during transaction sending like out of gas or revert before receipt
+        revert_reason = str(cle).lower()
+        if "already a member" in revert_reason:
+            app.logger.info(f"User {sender_address} tried to join DAO {checksum_dao_address} but is already a member")
+            return jsonify({"message": "You are already a member of this DAO! No need to join again.", "status": "info"}), 200
+        else:
+            app.logger.error(f"Join DAO failed with revert: {revert_reason}")
+            return jsonify({"error": f"Could not join the DAO: {revert_reason}"}), 400
 
     except Exception as e:
+        # Catch any other big surprises like network issues or bad contract data
         app.logger.error(f"Join DAO failed: {str(e)}")
-        return jsonify({"error": f"Failed to join DAO: {str(e)}"}), 500
-
-        # Load DAO contract artifact
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
-            dao_artifact = json.load(f)
-        DAO_ABI = dao_artifact["abi"]
-
-        # Create contract instance with checksum address
-        dao_contract = w3_py.eth.contract(address=checksum_dao_address, abi=DAO_ABI)
-
-        # Call join() function
-        tx = dao_contract.functions.join().build_transaction({
-            "from": sender_address,
-            "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 200000,
-            "gasPrice": w3_py.to_wei("50", "gwei")
-        })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
-        w3_py.eth.wait_for_transaction_receipt(tx_hash)
-
-        app.logger.info(f"User {sender_address} joined DAO at {checksum_dao_address}")
-        return jsonify({"message": f"Joined DAO at {checksum_dao_address}"}), 200
-    except Exception as e:
-        app.logger.error(f"Join DAO failed: {str(e)}")
-        return jsonify({"error": f"Failed to join DAO: {str(e)}"}), 500
+        return jsonify({"error": f"Sorry, joining the DAO did not work: {str(e)}"}), 500
 
 @app.route("/api/create_proposal", methods=["POST"])
 @login_required
@@ -637,30 +607,6 @@ def create_proposal():
         sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
         if not sender_private_key:
             return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
-
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
-            dao_artifact = json.load(f)
-        DAO_ABI = dao_artifact["abi"]
-
-        dao_contract = w3_py.eth.contract(address=checksum_dao_address, abi=DAO_ABI)
-        tx = dao_contract.functions.createProposal(description).build_transaction({
-            "from": sender_address,
-            "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 300000,
-            "gasPrice": w3_py.to_wei("50", "gwei")
-        })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
-        receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
-
-        event = dao_contract.events.ProposalCreated().process_receipt(receipt)
-        proposal_id = event[0]["args"]["proposalId"]
-
-        app.logger.info(f"Proposal created in DAO {checksum_dao_address}: ID={proposal_id}, Description={description}")
-        return jsonify({"message": f"Proposal created! ID: {proposal_id}", "proposal_id": str(proposal_id)}), 201
-    except Exception as e:
-        app.logger.error(f"Create proposal failed: {str(e)}")
-        return jsonify({"error": f"Failed to create proposal: {str(e)}"}), 500
 
         with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
@@ -818,8 +764,8 @@ def query():
 def subscribe():
     # Starts a Stripe subscription
     # Sends user to Stripe Checkout for payment
-    plan = request.form.get("plan")  # Grabs "basic" or "pro" from frontend form
-    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan)  # Test Price IDs - swap for live
+    plan = request.form.get("plan")  # Grabs basic or pro from frontend form
+    price_id = {"basic": "price_1QzXTCKv6dFcpMYlxS712fan", "pro": "price_1QzXY5Kv6dFcpMYluAWw5638"}.get(plan)  # Test Price IDs, swap for live
     if not price_id:
         return jsonify({"error": "Invalid plan"}), 400  # Bad plan? Kick it back
     try:
@@ -842,7 +788,7 @@ def subscribe():
 def subscribe_eth():
     # Handles ETH subscription payments
     # Verifies an Ethereum transaction to grant a subscription
-    plan = request.form.get("plan")  # "basic" or "pro" from frontend
+    plan = request.form.get("plan")  # basic or pro from frontend
     tx_hash = request.form.get("tx_hash")  # Transaction hash from MetaMask
     if plan not in ["basic", "pro"]:
         return jsonify({"error": "Invalid plan"}), 400
@@ -859,16 +805,16 @@ def subscribe_eth():
         if sender != current_user.email.lower():
             return jsonify({"error": "Sender mismatch"}), 400
         if amount_sent < expected_amount:
-            return jsonify({"error": f"Insufficient payment - sent {amount_sent} ETH, need {expected_amount} ETH"}), 400
-        # Wait for confirmation (1 block - adjust for live if needed)
+            return jsonify({"error": f"Insufficient payment, sent {amount_sent} ETH, need {expected_amount} ETH"}), 400
+        # Wait for confirmation, 1 block, adjust for live if needed
         w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        # Payment good - update subscription
+        # Payment good, update subscription
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
         c.execute("UPDATE users SET subscription = ? WHERE email = ?", (plan, current_user.email))
         conn.commit()
         conn.close()
-        app.logger.info(f"ETH subscription successful for {current_user.email} - Plan: {plan}, Tx: {tx_hash}")
+        app.logger.info(f"ETH subscription successful for {current_user.email}, Plan: {plan}, Tx: {tx_hash}")
         return jsonify({"success": True}), 200
     except Exception as e:
         app.logger.error(f"ETH subscription error for {current_user.email}: {str(e)}")
@@ -926,4 +872,5 @@ def start_session():
         session["nonce"] = None
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)  # Runs locally for testing
+    # Runs the app locally for testing
+    app.run(host="0.0.0.0", port=8080, debug=True)  # Listens on all interfaces, port 8080, with debug mode on
