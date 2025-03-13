@@ -1,4 +1,4 @@
-﻿// App.js
+// App.js
 // Purpose: This is the heart of BlockSpeak's frontend - a single-page app (SPA) built with React.
 // It connects users to Web3 via MetaMask, creates smart contracts, shows wallet analytics, crypto news,
 // price graphs, lets users ask LLM questions, handles subscriptions (Stripe + ETH!), and collects emails.

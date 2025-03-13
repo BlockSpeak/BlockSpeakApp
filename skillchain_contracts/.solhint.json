@@ -1,0 +1,12 @@
+{
+    "extends": "solhint:recommended",
+    "rules": {
+        "func-visibility": [
+            "error",
+            { "ignoreConstructors": true }
+        ],
+        "no-unused-vars": "warn",
+        "quotes": [ "error", "double" ],
+        "indent": [ "error", 2 ]
+    }
+}
