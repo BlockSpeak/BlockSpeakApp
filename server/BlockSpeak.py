@@ -41,7 +41,7 @@ from werkzeug.security import check_password_hash  # Checks hashed passwords
 
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
-load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/server/skillchain_contracts/.env")
+load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/skillchain_contracts/.env")
 
 # NETWORK decides if we are testing locally or live:
 # hardhat: Local blockchain at http://127.0.0.1:8545 for testing with fake ETH
@@ -914,6 +914,7 @@ def update_account():
         app.logger.error(f"Update account failed for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to update account"}), 500
 
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
@@ -922,6 +923,7 @@ def catch_all(path):
     if path.startswith("api/") or path == "nonce" or path == "login/metamask":
         return app.handle_url_build_error(None, path, None)
     return redirect("https://blockspeak.co", code=302)
+
 
 @app.before_request
 def start_session():
