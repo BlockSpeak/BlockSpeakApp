@@ -18,6 +18,7 @@ function App() {
 
   // Updates account state and localStorage
   // Saves or removes the account from localStorage and updates the backend user session
+  // Optimized to avoid unnecessary backend calls post-logout for cleaner logs and better UX
   const updateAccount = async (newAccount) => {
     setAccount(newAccount);
     if (newAccount) {
@@ -34,16 +35,9 @@ function App() {
       }
     } else {
       localStorage.removeItem('account');
-      // Clear account on backend
-      try {
-        await axios.post(
-          `${BASE_URL}/api/update_account`,
-          new URLSearchParams({ account: '' }),
-          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
-        );
-      } catch (error) {
-        console.error('Failed to clear account on backend:', error);
-      }
+      // No need to clear account on backend since /api/logout already ends the session
+      // Skipping this POST prevents a 401 error after logout, keeping logs clean
+      // For scaling: If future features need backend sync on logout, add a dedicated /api/clear_account route
     }
   };
 

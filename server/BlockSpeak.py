@@ -16,6 +16,7 @@ import feedparser  # Parses RSS feeds for news like CoinTelegraph
 import logging  # Logs for debugging to see whats happening when things break
 import stripe  # Payment processing for subscriptions via Stripe for card payments
 import uuid  # Unique IDs for nonces to secure login with MetaMask
+from decimal import Decimal # floating-point precision
 from dotenv import load_dotenv  # Loads secrets from .env file to keep keys safe
 from flask import Flask  # Flask is our API engine
 from flask import request  # Grabs data from frontend requests
@@ -39,9 +40,11 @@ from eth_account.messages import encode_defunct  # For MetaMask login signing me
 from werkzeug.security import generate_password_hash  # Secures passwords
 from werkzeug.security import check_password_hash  # Checks hashed passwords
 
+
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
 load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/skillchain_contracts/.env")
+
 
 # NETWORK decides if we are testing locally or live:
 # hardhat: Local blockchain at http://127.0.0.1:8545 for testing with fake ETH
@@ -54,11 +57,15 @@ elif NETWORK == "mainnet":
 else:
     raise ValueError(f"Unsupported NETWORK: {NETWORK}")  # Oops, typo in .env? Crash with a message!
 
+
 # ETH payment address where users send ETH for subscriptions
-ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")  # live
+ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS")
+if not ETH_PAYMENT_ADDRESS:
+    raise ValueError("ETH_PAYMENT_ADDRESS is not set in environment variables")
 # ETH subscription prices as test values, adjust for live ETH price like $2000 per ETH
 BASIC_PLAN_ETH = 0.005  # About $10 in test mode
 PRO_PLAN_ETH = 0.025    # About $50 in test mode
+
 
 # Set up Flask app, this is our servers engine
 app = Flask(__name__)  # Creates the Flask app
@@ -826,42 +833,145 @@ def subscribe():
         return jsonify({"error": "Subscription failed"}), 500
 
 
+@app.route("/api/get_payment_address", methods=["GET"])
+@login_required
+def get_payment_address():
+    return jsonify({"eth_payment_address": ETH_PAYMENT_ADDRESS}), 200
+
+
+@app.route("/api/subscription_status", methods=["GET"])
+@login_required
+def subscription_status():
+    """
+    Returns the current subscription status of the logged-in user.
+
+    Process:
+        1. Queries the database for the user's subscription plan.
+        2. Returns the plan (or None if no subscription exists) in a JSON response.
+
+    Returns:
+        JSON response with the user's subscription plan or an error if the query fails.
+    """
+    try:
+        # Connect to the database and fetch the user's subscription
+        conn = sqlite3.connect("users.db")  # Consider connection pooling for scalability
+        c = conn.cursor()
+        c.execute("SELECT subscription FROM users WHERE email = ?", (current_user.email,))
+        subscription = c.fetchone()  # Fetch the subscription column
+        conn.close()
+
+        # Log the status for debugging
+        app.logger.info(f"Subscription status for {current_user.email}: {subscription[0] if subscription else None}")
+        
+        # Return the subscription plan (or null if none)
+        return jsonify({"subscription": subscription[0] if subscription else None}), 200
+
+    except Exception as e:
+        # Log any errors and return a failure response
+        app.logger.error(f"Error fetching subscription status for {current_user.email}: {str(e)}")
+        return jsonify({"error": "Failed to fetch subscription status"}), 500
+
+
 @app.route("/api/subscribe_eth", methods=["POST"])
 @login_required
 def subscribe_eth():
-    # Handles ETH subscription payments
-    # Verifies an Ethereum transaction to grant a subscription
-    plan = request.form.get("plan")  # basic or pro from frontend
+    """
+    Handles ETH subscription payments by verifying an Ethereum transaction and updating the user's subscription plan.
+    
+    Args (via POST request form data):
+        - plan (str): Subscription plan ('basic' or 'pro') selected by the user.
+        - tx_hash (str): Transaction hash provided by MetaMask or another Ethereum wallet.
+
+    Process:
+        1. Validates the subscription plan.
+        2. Checks the transaction details (recipient, sender, amount) against expected values.
+        3. Confirms the transaction on the blockchain.
+        4. Updates the user's subscription in the database upon successful verification.
+        5. Logs key events for debugging and auditing.
+
+    Returns:
+        JSON response indicating success or an error with details.
+    """
+    # Extract plan and transaction hash from the POST request form data
+    plan = request.form.get("plan")  # 'basic' or 'pro' from frontend
     tx_hash = request.form.get("tx_hash")  # Transaction hash from MetaMask
+
+    # Step 1: Validate the plan to ensure its a supported option
     if plan not in ["basic", "pro"]:
+        app.logger.error(f"Invalid plan received: {plan}")
         return jsonify({"error": "Invalid plan"}), 400
-    expected_amount = BASIC_PLAN_ETH if plan == "basic" else PRO_PLAN_ETH
+
+    # Step 2: Determine the expected ETH amount based on the plan
+    # These constants (BASIC_PLAN_ETH, PRO_PLAN_ETH) can be adjusted or moved to a config file for scalability
+    expected_amount = Decimal(str(BASIC_PLAN_ETH)) if plan == "basic" else Decimal(str(PRO_PLAN_ETH))
+    app.logger.info(f"Processing {plan} plan subscription, expected amount: {expected_amount} ETH")
+
     try:
-        # Get transaction details
-        tx = w3.eth.get_transaction(tx_hash)
-        amount_sent = w3.from_wei(tx["value"], "ether")  # Convert Wei to ETH
-        recipient = tx["to"].lower()
-        sender = tx["from"].lower()
-        # Verify payment
+        # Step 3: Retrieve transaction details from the Ethereum blockchain
+        tx = w3.eth.get_transaction(tx_hash)  # Fetch transaction using Web3.py
+        amount_sent = Decimal(str(w3.from_wei(tx["value"], "ether")))  # Convert transaction value from Wei to ETH with Decimal precision
+        recipient = tx["to"].lower()  # Normalize recipient address to lowercase
+        sender = tx["from"].lower()  # Normalize sender address to lowercase
+
+        # Log transaction details for traceability
+        app.logger.info(f"Transaction details - Hash: {tx_hash}, Amount: {amount_sent} ETH, To: {recipient}, From: {sender}")
+
+        # Step 4: Verify transaction meets subscription requirements
+        # Check recipient matches the designated payment address
         if recipient != ETH_PAYMENT_ADDRESS.lower():
+            app.logger.error(f"Recipient mismatch: expected {ETH_PAYMENT_ADDRESS.lower()}, got {recipient}")
             return jsonify({"error": "Wrong recipient address"}), 400
+
+        # Check sender matches the logged-in user's wallet (stored as email)
         if sender != current_user.email.lower():
+            app.logger.error(f"Sender mismatch: expected {current_user.email.lower()}, got {sender}")
             return jsonify({"error": "Sender mismatch"}), 400
+
+        # Verify the sent amount meets or exceeds the plans requirement
         if amount_sent < expected_amount:
+            app.logger.error(f"Insufficient payment: sent {amount_sent} ETH, required {expected_amount} ETH")
             return jsonify({"error": f"Insufficient payment, sent {amount_sent} ETH, need {expected_amount} ETH"}), 400
-        # Wait for confirmation, 1 block, adjust for live if needed
-        w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        # Payment good, update subscription
-        conn = sqlite3.connect("users.db")
+
+        # Step 5: Wait for transaction confirmation on the blockchain
+        # Timeout set to 120 seconds; adjust for live environment if needed (e.g., more confirmations)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        if receipt.status != 1:
+            app.logger.error(f"Transaction failed on blockchain: hash={tx_hash}")
+            return jsonify({"error": "Transaction failed on blockchain"}), 400
+
+        # Log successful transaction confirmation
+        app.logger.info(f"Transaction confirmed: hash={tx_hash}, block={receipt.blockNumber}")
+
+        # Step 6: Update the users subscription in the database
+        conn = sqlite3.connect("users.db")  # Consider connection pooling for scalability
         c = conn.cursor()
         c.execute("UPDATE users SET subscription = ? WHERE email = ?", (plan, current_user.email))
         conn.commit()
         conn.close()
+
+        # Log successful subscription for auditing
         app.logger.info(f"ETH subscription successful for {current_user.email}, Plan: {plan}, Tx: {tx_hash}")
-        return jsonify({"success": True}), 200
+        return jsonify({"success": True, "plan": plan, "message": "Subscription updated"}), 200
+
     except Exception as e:
+        # Step 7: Handle and log any errors during the process
         app.logger.error(f"ETH subscription error for {current_user.email}: {str(e)}")
-        return jsonify({"error": "Payment verification failed"}), 500
+        
+        # Root Cause Analysis: Add detailed error breakdown for debugging
+        error_details = {
+            "error": "Payment verification failed",
+            "details": str(e),
+            "possible_causes": []
+        }
+        if "timeout" in str(e).lower():
+            error_details["possible_causes"].append("Transaction confirmation took too long (timeout > 120s)")
+        elif "transaction" in str(e).lower():
+            error_details["possible_causes"].append("Invalid or missing transaction hash")
+        else:
+            error_details["possible_causes"].append("Unexpected error, check logs for stack trace")
+        
+        return jsonify(error_details), 500
+
 
 
 @app.route("/api/subscription_success")
@@ -893,6 +1003,7 @@ def home_api():
         "x_profiles": get_x_profiles(), "top_coins": get_top_coins(), "stripe_key": STRIPE_PUBLISHABLE_KEY,
         "subscription": subscription
     })
+
 
 
 @app.route("/api/coin_graph/<coin_id>")
