@@ -369,6 +369,7 @@ def get_nonce():
     app.logger.info(f"Generated nonce: {nonce}")
     return nonce  # Sends it to the frontend
 
+
 @app.route("/api/register", methods=["POST"])
 def register():
     # Registers a new user with email and password
@@ -398,6 +399,7 @@ def register():
     finally:
         conn.close()
 
+
 @app.route("/api/login", methods=["POST"])
 def login():
     # Logs in a user with email and password
@@ -422,6 +424,7 @@ def logout():
     # Ends the session
     logout_user()
     return jsonify({"success": True, "message": "Logged out!"})
+
 
 @app.route("/login/metamask", methods=["POST"])
 def login_metamask():
@@ -456,6 +459,7 @@ def login_metamask():
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
 
+
 @app.route("/api/create_contract", methods=["POST"])
 @login_required
 def create_contract():
@@ -474,7 +478,7 @@ def create_contract():
     match = re.search(r"send (\d+) eth to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+))?", contract_request, re.IGNORECASE)
     if match:
         amount, recipient, frequency = int(match.group(1)), match.group(2), match.group(3).lower() if match.group(3) else "once"
-        contract_path = "skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
+        contract_path = "../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
         try:
             with open(contract_path) as f:
                 contract_data = json.load(f)
@@ -496,30 +500,48 @@ def create_contract():
             return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
     return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"})
 
+
 @app.route("/api/create_dao", methods=["POST"])
 @login_required
 def create_dao():
-    # Creates a decentralized autonomous organization DAO based on user input
     dao_name = request.form.get("dao_name")
     dao_description = request.form.get("dao_description")
     if not dao_name or not dao_description:
         return jsonify({"error": "DAO name and description are required"}), 400
 
     try:
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
+        app.logger.info("Loading DAO contract artifact")
+        with open("../skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
         DAO_ABI = dao_artifact["abi"]
         DAO_BYTECODE = dao_artifact["bytecode"]
 
         w3_py = w3
+        app.logger.info("Checking blockchain connection")
         if not w3_py.is_connected():
             return jsonify({"error": "Blockchain not connected"}), 500
 
-        sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else w3_py.to_checksum_address(current_user.email)
-        sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
-        if not sender_private_key:
-            return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
+        # Replace ternary with if/else
+        if NETWORK == "hardhat":
+            sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        else:
+            sender_address = w3_py.to_checksum_address(current_user.email)
 
+        # Replace ternary with if/else
+        if NETWORK == "hardhat":
+            sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY")
+        else:
+            sender_private_key = os.getenv("MAINNET_PRIVATE_KEY")
+
+        if not sender_private_key:
+            # Replace ternary in error message with if/else
+            if NETWORK == "hardhat":
+                missing_key = "HARDHAT_PRIVATE_KEY"
+            else:
+                missing_key = "MAINNET_PRIVATE_KEY"
+            return jsonify({"error": f"Missing {missing_key}"}), 500
+
+        app.logger.info(f"Deploying DAO with name: {dao_name}, description: {dao_description}")
         DAO = w3_py.eth.contract(abi=DAO_ABI, bytecode=DAO_BYTECODE)
         tx = DAO.constructor(dao_name, dao_description).build_transaction({
             "from": sender_address,
@@ -527,99 +549,79 @@ def create_dao():
             "gas": 2000000,
             "gasPrice": w3_py.to_wei("50", "gwei")
         })
+        app.logger.info("Signing transaction")
         signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+        app.logger.info("Sending transaction")
         tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+        app.logger.info("Waiting for transaction receipt")
         receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
         dao_address = receipt.contractAddress
 
         app.logger.info(f"DAO created: Name={dao_name}, Address={w3_py.to_checksum_address(dao_address)}")
         return jsonify({"message": f"DAO Created! Name: {dao_name}, Address={w3_py.to_checksum_address(dao_address)}"}), 201
     except FileNotFoundError:
+        app.logger.error("DAO contract artifact missing")
         return jsonify({"error": "DAO contract artifact missing"}), 500
     except Exception as e:
         app.logger.error(f"DAO creation failed: {str(e)}")
         return jsonify({"error": f"DAO creation failed: {str(e)}"}), 500
 
+
 @app.route("/api/join_dao", methods=["POST"])
 @login_required
 def join_dao():
-    # Allows a user to join an existing DAO like joining a cool club on the blockchain!
-    # Calls the join() function on the DAO contract to add the user as a member.
-    # If they are already in like the creator, we will tell them nicely instead of crashing.
-    dao_address = request.form.get("dao_address")  # The DAO special address like its house number
+    dao_address = request.form.get("dao_address")
     if not dao_address or not is_wallet_address(dao_address):
-        # Make sure they gave us a real Ethereum address!
         return jsonify({"error": "Please give me a valid DAO address (starts with 0x, 42 characters)!"}), 400
 
     try:
-        # Use the global w3 instance, our blockchain helper, Hardhat for testing, Mainnet for real stuff
         w3_py = w3
         if not w3_py.is_connected():
-            # Check if we can talk to the blockchain, Hardhat or Mainnet
             return jsonify({"error": "Oops! The blockchain is not answering right now."}), 500
 
-        # Convert addresses to checksum format for fancy formatting and safety
-        checksum_dao_address = w3_py.to_checksum_address(dao_address)  # The DAO address, all neat
-        sender_address = w3_py.to_checksum_address(current_user.email)  # Your MetaMask wallet address, logged-in user
+        checksum_dao_address = w3_py.to_checksum_address(dao_address)
+        sender_address = w3_py.to_checksum_address(current_user.email)
         sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
         if not sender_private_key:
-            # We need a secret key to sign the transaction like a password for your wallet
             return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'} in our secrets file!"}), 500
 
-        # Load DAO contract artifact, the blueprint of our DAO toy box
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
+        with open("../skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
-        DAO_ABI = dao_artifact["abi"]  # The instructions for talking to the DAO like a manual
-
-        # Create contract instance to connect to the DAO at its address
+        DAO_ABI = dao_artifact["abi"]
         dao_contract = w3_py.eth.contract(address=checksum_dao_address, abi=DAO_ABI)
 
-        # Build the join transaction like knocking on the DAO door
-        tx = dao_contract.functions.join().build_transaction({
-            "from": sender_address,  # You are the one joining!
-            "nonce": w3_py.eth.get_transaction_count(sender_address),  # How many times you have sent stuff to prevent duplicates
-            "gas": 200000,  # Fuel for the transaction, enough for join() on Hardhat or Mainnet
-            "gasPrice": w3_py.to_wei("50", "gwei")  # How much you are paying per gas unit, 50 gwei works for testing
-        })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)  # Sign it with your key to prove it is you
-
-        # Send the transaction and handle the response
-        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)  # Send it to the blockchain!
-        receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)  # Wait for blockchain to process like waiting for a receipt
-        if receipt.status == 1:  # Success, transaction worked!
-            app.logger.info(f"User {sender_address} joined DAO at {checksum_dao_address}")
-            return jsonify({"message": f"You are in! Welcome to the DAO at {checksum_dao_address}", "status": "success"}), 200
-        else:
-            # Transaction failed, reverted, probably because they are already a member
-            app.logger.info(f"Join attempt reverted for {sender_address} on DAO {checksum_dao_address}")
-            # Simulate the call to get the exact revert reason without spending more gas
-            try:
-                dao_contract.caller({"from": sender_address}).join()  # Dry run to check why it failed
-                # If this succeeds, something weird happened, log it as an error
-                return jsonify({"error": "Join failed unexpectedly, contact support"}), 400
-            except ContractLogicError as cle:
-                revert_reason = str(cle).lower()  # Get the reason like "already a member"
-                if "already a member" in revert_reason:
-                    app.logger.info(f"User {sender_address} tried to join DAO {checksum_dao_address} but is already a member")
-                    return jsonify({"message": "You are already a member of this DAO! No need to join again.", "status": "info"}), 200
-                else:
-                    app.logger.error(f"Join DAO failed with unexpected revert: {revert_reason}")
-                    return jsonify({"error": f"Could not join the DAO: {revert_reason}"}), 400
-
-    except ContractLogicError as cle:
-        # Catch reverts that happen during transaction sending like out of gas or revert before receipt
-        revert_reason = str(cle).lower()
-        if "already a member" in revert_reason:
-            app.logger.info(f"User {sender_address} tried to join DAO {checksum_dao_address} but is already a member")
-            return jsonify({"message": "You are already a member of this DAO! No need to join again.", "status": "info"}), 200
-        else:
-            app.logger.error(f"Join DAO failed with revert: {revert_reason}")
-            return jsonify({"error": f"Could not join the DAO: {revert_reason}"}), 400
+        # Simulate the join call first
+        try:
+            dao_contract.functions.join().call({"from": sender_address})
+            # If no revert, send the transaction
+            tx = dao_contract.functions.join().build_transaction({
+                "from": sender_address,
+                "nonce": w3_py.eth.get_transaction_count(sender_address),
+                "gas": 200000,
+                "gasPrice": w3_py.to_wei("50", "gwei")
+            })
+            signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+            app.logger.info("Sending join transaction")
+            tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+            receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+            if receipt.status == 1:
+                app.logger.info(f"User {sender_address} joined DAO at {checksum_dao_address}")
+                return jsonify({"message": f"You are in! Welcome to the DAO at {checksum_dao_address}", "status": "success"}), 200
+            else:
+                return jsonify({"error": "Transaction failed unexpectedly"}), 400
+        except ContractLogicError as cle:
+            revert_reason = str(cle).lower()
+            if "already a member" in revert_reason:
+                app.logger.info(f"User {sender_address} tried to join DAO {checksum_dao_address} but is already a member")
+                return jsonify({"message": "You are already a member of this DAO! No need to join again.", "status": "info"}), 200
+            else:
+                app.logger.error(f"Join DAO failed with revert: {revert_reason}")
+                return jsonify({"error": f"Could not join the DAO: {revert_reason}"}), 400
 
     except Exception as e:
-        # Catch any other big surprises like network issues or bad contract data
         app.logger.error(f"Join DAO failed: {str(e)}")
         return jsonify({"error": f"Sorry, joining the DAO did not work: {str(e)}"}), 500
+
 
 @app.route("/api/create_proposal", methods=["POST"])
 @login_required
@@ -642,7 +644,7 @@ def create_proposal():
         if not sender_private_key:
             return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
 
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
+        with open("../skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
         DAO_ABI = dao_artifact["abi"]
 
@@ -665,6 +667,7 @@ def create_proposal():
     except Exception as e:
         app.logger.error(f"Create proposal failed: {str(e)}")
         return jsonify({"error": f"Failed to create proposal: {str(e)}"}), 500
+
 
 @app.route("/api/vote", methods=["POST"])
 @login_required
@@ -690,7 +693,7 @@ def vote():
         if not sender_private_key:
             return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
 
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
+        with open("../skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
         DAO_ABI = dao_artifact["abi"]
 
@@ -711,6 +714,7 @@ def vote():
         app.logger.error(f"Vote failed: {str(e)}")
         return jsonify({"error": f"Failed to vote: {str(e)}"}), 500
 
+
 @app.route("/api/get_proposals", methods=["POST"])
 @login_required
 def get_proposals():
@@ -724,7 +728,7 @@ def get_proposals():
             return jsonify({"error": "Blockchain not connected"}), 500
 
         checksum_dao_address = w3_py.to_checksum_address(dao_address)
-        with open("skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
+        with open("../skillchain_contracts/artifacts/contracts/DAO.sol/DAO.json") as f:
             dao_artifact = json.load(f)
         DAO_ABI = dao_artifact["abi"]
 
@@ -749,6 +753,7 @@ def get_proposals():
         app.logger.error(f"Get proposals failed: {str(e)}")
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
+
 @app.route("/api/analytics/<address>")
 @login_required
 def get_analytics(address):
@@ -757,11 +762,13 @@ def get_analytics(address):
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
 
+
 @app.route("/api/news")
 def get_news_api():
     # Returns latest crypto news
     # Simple endpoint for the news section
     return jsonify(get_news_items())
+
 
 @app.route("/api/query", methods=["POST"])
 @login_required
@@ -793,6 +800,7 @@ def query():
     current_user.history = history[:3]
     return jsonify({"answer": answer, "question": user_question, "history": history[:3]})
 
+
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
@@ -816,6 +824,7 @@ def subscribe():
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe error: {str(e)}")
         return jsonify({"error": "Subscription failed"}), 500
+
 
 @app.route("/api/subscribe_eth", methods=["POST"])
 @login_required
@@ -854,6 +863,7 @@ def subscribe_eth():
         app.logger.error(f"ETH subscription error for {current_user.email}: {str(e)}")
         return jsonify({"error": "Payment verification failed"}), 500
 
+
 @app.route("/api/subscription_success")
 @login_required
 def subscription_success():
@@ -871,6 +881,7 @@ def subscription_success():
             return jsonify({"success": True, "message": "Subscription confirmed"})
     return jsonify({"error": "Subscription not confirmed"}), 500
 
+
 @app.route("/api/")
 def home_api():
     # Main data endpoint for the home page
@@ -883,11 +894,13 @@ def home_api():
         "subscription": subscription
     })
 
+
 @app.route("/api/coin_graph/<coin_id>")
 def coin_graph(coin_id):
     # Returns 7-day price graph data for a coin
     # Used for the dashboard graph
     return jsonify(get_coin_graph(coin_id))
+
 
 @app.route("/api/update_account", methods=["POST"])
 @login_required
