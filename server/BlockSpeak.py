@@ -50,12 +50,12 @@ NETWORK = os.getenv("NETWORK", "hardhat")  # Defaults to hardhat if not set in .
 if NETWORK == "hardhat":
     w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))  # Connects to local Hardhat node
 elif NETWORK == "mainnet":
-    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))  # Connects to Mainnet via Alchemy
+    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
 else:
     raise ValueError(f"Unsupported NETWORK: {NETWORK}")  # Oops, typo in .env? Crash with a message!
 
 # ETH payment address where users send ETH for subscriptions
-ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")  # Default is a test wallet, update for live
+ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS", "0x37558169d86748dA34eACC76eEa6b5AF787FF74c")  # live
 # ETH subscription prices as test values, adjust for live ETH price like $2000 per ETH
 BASIC_PLAN_ETH = 0.005  # About $10 in test mode
 PRO_PLAN_ETH = 0.025    # About $50 in test mode
@@ -86,6 +86,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)  # Initialize OpenAI client for ChatGPT
 login_manager = LoginManager()
 login_manager.init_app(app)
 
+
 # Database setup: Simple SQLite for users
 def init_db():
     # Creates the users table if it doesnt exist
@@ -94,22 +95,27 @@ def init_db():
     c = conn.cursor()  # Cursor to run SQL commands
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-        subscription TEXT DEFAULT 'free', stripe_customer_id TEXT, history TEXT DEFAULT '[]')''')  # Creates table structure
+        subscription TEXT DEFAULT 'free', stripe_customer_id TEXT, history TEXT DEFAULT '[]')''')
     conn.commit()  # Saves changes
     conn.close()  # Closes connection
 
+
 init_db()  # Runs the setup right away
+
 
 # User class for Flask-Login
 class User(UserMixin):
     # Represents a user with email, subscription, Stripe ID, and history
+
     def __init__(self, email, subscription="free", stripe_customer_id=None, history=None):
         self.email = email  # Email or wallet address like 0x123...
         self.subscription = subscription  # Free, basic, or pro
         self.stripe_customer_id = stripe_customer_id  # For Stripe payments
         self.history = json.loads(history) if history else []  # Users query history, last 3 questions
+
     def get_id(self):
         return self.email  # Unique ID is the email or wallet address
+
 
 @login_manager.user_loader
 def load_user(email):
@@ -123,6 +129,7 @@ def load_user(email):
         return User(user_data[0], user_data[1], user_data[2], user_data[3])  # Returns User object
     return None  # No user found? Return None
 
+
 def save_user_history(email, history):
     # Saves the users last 3 queries to the database
     conn = sqlite3.connect("users.db")
@@ -131,29 +138,48 @@ def save_user_history(email, history):
     conn.commit()
     conn.close()
 
+
 # Utility Functions: Helpers for our logic
 def is_bitcoin_address(text):
     # Checks if text is a Bitcoin address, starts with 1, 3, or bc1, length 26 to 35
     return (text.startswith("1") or text.startswith("3") or text.startswith("bc1")) and 26 <= len(text) <= 35
 
+
 def is_wallet_address(text):
     # Checks if text is an Ethereum address, starts with 0x, length 42
     return text.startswith("0x") and len(text) == 42
+
 
 def is_solana_address(text):
     # Checks if text is a Solana address, length 44, specific characters
     return len(text) == 44 and all(c in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz" for c in text)
 
+
 def normalize_question(text):
     # Turns user questions into standard formats for easier handling
     # Helps decide how to answer like price, analytics, or ChatGPT
     text = text.lower().strip()
-    if "predict" in text or "price in" in text: return "price_prediction"
-    if "gas" in text: return "gas"
-    elif "solana" in text: return "solana block" if "block" in text else "solana price"
-    elif "bitcoin" in text or "btc" in text: return "bitcoin block" if "block" in text else "bitcoin price"
-    elif "eth" in text or "ethereum" in text: return "ethereum block" if "block" in text else "ethereum price"
+    if "predict" in text or "price in" in text:
+        return "price_prediction"
+    if "gas" in text:
+        return "gas"
+    elif "solana" in text:
+        if "block" in text:
+            return "solana block"
+        else:
+            return "solana price"
+    elif "bitcoin" in text or "btc" in text:
+        if "block" in text:
+            return "bitcoin block"
+        else:
+            return "bitcoin block"
+    elif "eth" in text or "ethereum" in text:
+        if "block" in text:
+            return "ethereum block"
+        else:
+            return "ethereum price"
     return text
+
 
 def get_crypto_price(coin):
     # Fetches current price from CoinCap API like Bitcoin or Ethereum
@@ -166,6 +192,7 @@ def get_crypto_price(coin):
         app.logger.error(f"CoinCap price fetch failed for {coin}: {str(e)}")
         return "Price unavailable"  # Fallback if API fails
 
+
 def get_trending_crypto():
     # Gets top 3 trending coins by volume from CoinCap
     # Used for the home page trends section
@@ -177,10 +204,12 @@ def get_trending_crypto():
         app.logger.error(f"CoinCap trending fetch failed: {str(e)}")
         return [{"topic": "Error", "snippet": "Could not fetch trends", "link": "#"}]  # Fallback if API fails
 
+
 def get_x_profiles():
     # Returns static list of crypto X profiles
     # Used for the home page social links
     return [{"name": "Bitcoin", "link": "https://x.com/Bitcoin"}, {"name": "Ethereum", "link": "https://x.com/ethereum"}, {"name": "Solana", "link": "https://x.com/Solana"}]
+
 
 def get_news_items():
     # Fetches latest crypto news from RSS feeds
@@ -197,6 +226,7 @@ def get_news_items():
         except requests.RequestException as e:
             app.logger.error(f"RSS fetch failed for {url}: {str(e)}")
     return [{"title": "News unavailable, check back later!", "link": "#"}]  # Fallback if all feeds fail
+
 
 def get_wallet_analytics(address):
     # Gets wallet stats for Bitcoin, Ethereum, or Solana
@@ -250,9 +280,11 @@ def get_wallet_analytics(address):
         return {"error": "Invalid wallet address"}
     return analytics
 
+
 def get_historical_balance(address, chain):
     # Gets 30-day balance history for a wallet, not implemented yet as a future feature!
     pass
+
 
 def get_top_coins():
     # Fetches top coins from CoinCap with caching
@@ -292,6 +324,7 @@ def get_top_coins():
                 {"id": "solana", "name": "Solana", "image": "https://assets.coincap.io/assets/icons/sol@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"},
                 {"id": "tether", "name": "Tether", "image": "https://assets.coincap.io/assets/icons/usdt@2x.png", "price": "N/A", "market_cap": "N/A", "change": 0, "graph_color": "#2ecc71"}]
 
+
 def get_coin_graph(coin_id):
     # Fetches 7-day price history for a coin
     # Used for the price graph on the dashboard
@@ -320,6 +353,7 @@ def get_coin_graph(coin_id):
         graph_data = {"dates": dates, "prices": prices}
         session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
         return graph_data
+
 
 def predict_price(coin, days):
     # Predicts future price based on 30-day trend, not implemented yet as a future feature!
