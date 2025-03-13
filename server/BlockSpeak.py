@@ -62,7 +62,7 @@ PRO_PLAN_ETH = 0.025    # About $50 in test mode
 
 # Set up Flask app, this is our servers engine
 app = Flask(__name__)  # Creates the Flask app
-app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")  # Secret for sessions to secure cookies, update in .env for prod
+app.secret_key = os.getenv("SECRET_KEY")  # Secret for sessions to secure cookies, update in .env for prod
 app.config.update(
     SESSION_TYPE="memory",  # Store sessions in memory, good for testing
     SESSION_PERMANENT=False,  # Sessions dont last forever, log out when browser closes
@@ -854,6 +854,31 @@ def coin_graph(coin_id):
     # Returns 7-day price graph data for a coin
     # Used for the dashboard graph
     return jsonify(get_coin_graph(coin_id))
+
+@app.route("/api/update_account", methods=["POST"])
+@login_required
+def update_account():
+    # Updates the user's account in the database
+    # Ensures the frontend and backend are in sync with the wallet address
+    new_account = request.form.get("account")
+    if new_account and not is_wallet_address(new_account) and new_account != '':
+        return jsonify({"error": "Invalid wallet address"}), 400
+    try:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        # Update the email field with the new account (wallet address)
+        c.execute("UPDATE users SET email = ? WHERE email = ?", (new_account or current_user.email, current_user.email))
+        conn.commit()
+        # Refresh the current user session
+        if new_account:
+            user = load_user(new_account)
+            if user:
+                login_user(user)
+        conn.close()
+        return jsonify({"success": True, "message": "Account updated"}), 200
+    except Exception as e:
+        app.logger.error(f"Update account failed for {current_user.email}: {str(e)}")
+        return jsonify({"error": "Failed to update account"}), 500
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
