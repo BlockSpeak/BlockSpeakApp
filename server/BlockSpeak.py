@@ -16,6 +16,7 @@ import feedparser  # Parses RSS feeds for news like CoinTelegraph
 import logging  # Logs for debugging to see whats happening when things break
 import stripe  # Payment processing for subscriptions via Stripe for card payments
 import uuid  # Unique IDs for nonces to secure login with MetaMask
+import time  # For adding delays in retries
 from decimal import Decimal # floating-point precision
 from dotenv import load_dotenv  # Loads secrets from .env file to keep keys safe
 from flask import Flask  # Flask is our API engine
@@ -50,10 +51,32 @@ load_dotenv(dotenv_path="C:/Users/brody/BlockchainQueryTool/BlockSpeak/skillchai
 # hardhat: Local blockchain at http://127.0.0.1:8545 for testing with fake ETH
 # mainnet: Ethereum Mainnet via Alchemy for production with real ETH
 NETWORK = os.getenv("NETWORK", "hardhat")  # Defaults to hardhat if not set in .env
+
+# Load API keys for Alchemy and Infura
+ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")
+INFURA_KEY = os.getenv("INFURA_KEY")
+
+# Web3 provider setup with Alchemy as primary and Infura as fallback for mainnet
 if NETWORK == "hardhat":
     w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))  # Connects to local Hardhat node
+    logging.info("Connected to Hardhat local network")
 elif NETWORK == "mainnet":
-    w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{os.getenv('ALCHEMY_API_KEY')}"))
+    try:
+        # Try Alchemy first
+        w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"))
+        if w3.is_connected():
+            logging.info("Connected to Ethereum Mainnet via Alchemy")
+        else:
+            raise ConnectionError("Alchemy connection failed")
+    except Exception as e:
+        logging.warning(f"Alchemy connection failed: {str(e)}. Falling back to Infura.")
+        if not INFURA_KEY:
+            raise ValueError("INFURA_KEY must be set for fallback")
+        w3 = Web3Py(Web3Py.HTTPProvider(f"https://mainnet.infura.io/v3/{INFURA_KEY}"))
+        if w3.is_connected():
+            logging.info("Connected to Ethereum Mainnet via Infura")
+        else:
+            raise ConnectionError("Infura connection failed")
 else:
     raise ValueError(f"Unsupported NETWORK: {NETWORK}")  # Oops, typo in .env? Crash with a message!
 
@@ -224,14 +247,21 @@ def get_news_items():
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}  # Pretends to be a browser
     urls = ["https://coinjournal.net/feed/", "https://cointelegraph.com/rss"]
     for url in urls:
-        try:
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()  # Checks if request worked
-            feed = feedparser.parse(response.content)
-            if not feed.entries: continue  # Skip if no news items
-            return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]  # Top 3 news items
-        except requests.RequestException as e:
-            app.logger.error(f"RSS fetch failed for {url}: {str(e)}")
+        for attempt in range(3):  # Retry up to 3 times per URL
+            try:
+                response = requests.get(url, headers=headers, timeout=30)  # Increased timeout to 30 seconds
+                response.raise_for_status()  # Checks if request worked
+                feed = feedparser.parse(response.content)
+                if not feed.entries:
+                    app.logger.warning(f"No entries found in feed: {url}")
+                    continue  # Skip if no news items
+                app.logger.info(f"Successfully fetched news from {url}")
+                return [{"title": entry.title, "link": entry.link} for entry in feed.entries[:3]]  # Top 3 news items
+            except requests.RequestException as e:
+                app.logger.error(f"Attempt {attempt + 1} for {url} failed: {str(e)}")
+                if attempt < 2:  # Dont sleep on the last attempt
+                    time.sleep(2 ** attempt)  # Exponential backoff: 1s, then 2s
+    app.logger.error("All RSS fetch attempts failed for both URLs.")
     return [{"title": "News unavailable, check back later!", "link": "#"}]  # Fallback if all feeds fail
 
 
@@ -532,7 +562,7 @@ def create_dao():
         if NETWORK == "hardhat":
             sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
         else:
-            sender_address = w3_py.to_checksum_address(current_user.email)
+            sender_address = current_user.email
 
         # Replace ternary with if/else
         if NETWORK == "hardhat":
