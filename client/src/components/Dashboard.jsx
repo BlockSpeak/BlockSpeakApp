@@ -243,9 +243,9 @@ function Dashboard({ account, logout, subscription }) {
             Connected: {account.slice(0, 6)}...{account.slice(-4)} ({subscription})
             {/* Updated logout button to redirect to home after logout */}
             <button
-              onClick={() => {
-                logout(); // Call the logout function from useAuth
-                navigate('/'); // Redirect to the home page
+              onClick={async () => {
+                await logout();
+                navigate('/');
               }}
               className="ml-2 text-blue-400 hover:underline"
             >
