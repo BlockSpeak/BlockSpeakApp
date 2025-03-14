@@ -60,7 +60,7 @@ INFURA_KEY = os.getenv("INFURA_KEY")
 if NETWORK == "hardhat":
     w3 = Web3Py(Web3Py.HTTPProvider("http://127.0.0.1:8545"))  # Connects to local Hardhat node
     logging.info("Connected to Hardhat local network")
-elif NETWORK == "mainnet":
+elif NETWORK == "mainnet": #connects to maainnet if not hardhat
     try:
         # Try Alchemy first
         w3 = Web3Py(Web3Py.HTTPProvider(f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"))

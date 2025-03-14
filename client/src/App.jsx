@@ -9,17 +9,28 @@ import { BrowserRouter as Router } from 'react-router-dom';
 import AppContent from './components/AppContent';
 import useAuth from './hooks/useAuth'; // Custom hook for authentication logic
 import './index.css';
-
-// Base URL is now defined in useAuth.js to keep it centralized
-// BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
+import Spinner from './components/Spinner';
 
 function App() {
   // Use the useAuth hook to manage authentication state and functions
   // This replaces local useState for account/subscription, useEffect for session checks, and updateAccount
   // Added setSubscription and setAccount from useAuth to pass to AppContent
   const {
-    account, setAccount, subscription, setSubscription, loginMessage, setLoginMessage, loginWithMetaMask, logout,
+    account,
+    setAccount,
+    subscription,
+    setSubscription,
+    loginMessage,
+    setLoginMessage,
+    loginWithMetaMask,
+    logout,
+    loading, // Added: Extract loading state from useAuth
   } = useAuth();
+
+  // Show Spinner while loading; otherwise, render AppContent
+  if (loading) {
+    return <Spinner />; // Displays during session restoration
+  }
 
   return (
     <Router>
