@@ -833,9 +833,10 @@ def subscribe():
         return jsonify({"error": "Subscription failed"}), 500
 
 
+# Remove @login_required to allow unauthenticated access
 @app.route("/api/get_payment_address", methods=["GET"])
-@login_required
 def get_payment_address():
+    """Return the ETH payment address for subscriptions."""
     return jsonify({"eth_payment_address": ETH_PAYMENT_ADDRESS}), 200
 
 

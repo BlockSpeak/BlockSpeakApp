@@ -1,7 +1,9 @@
-// Dashboard component: Main user interface after login
-// Displays forms to create smart contracts and DAOs, ask crypto questions, and shows wallet analytics,
-// price graphs, top coins, and news. Now includes DAO voting: join, propose, and vote on ideas!
+// Dashboard.jsx
+// Purpose: Main user interface after login, displaying forms for smart contracts, DAOs, and crypto queries.
+// wallet analytics, price graphs, top coins, and news. Includes DAO voting: join, propose, and vote on ideas.
+
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // Added for navigation
 import axios from 'axios';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
@@ -13,6 +15,9 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
 
 function Dashboard({ account, logout, subscription }) {
+  const navigate = useNavigate(); // For redirecting to login or subscribe pages
+
+  // State variables for various dashboard functionalities
   const [contractRequest, setContractRequest] = useState(''); // Input for creating a smart contract
   const [contractResult, setContractResult] = useState(''); // Result message from contract creation
   const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, tx count, tokens)
@@ -31,11 +36,25 @@ function Dashboard({ account, logout, subscription }) {
   const [proposals, setProposals] = useState([]); // List of proposals for the DAO
   const [voteResult, setVoteResult] = useState(''); // Result message from voting
 
+  // requireLoginOrSubscription: Checks if the user is logged in and has a subscription
+  // Redirects to login or subscribe page based on user status.
+  const requireLoginOrSubscription = (returnPath = '/dashboard') => {
+    if (!account) {
+      navigate(`/login?return=${returnPath}`); // Redirect to login with return URL
+      return true;
+    }
+    if (subscription === 'free') {
+      navigate('/subscribe'); // Redirect to subscribe if on free plan
+      return true;
+    }
+    return false; // User is authenticated and subscribed
+  };
+
   // Function to create a smart contract
   // Sends a contract request to the backend (/api/create_contract) and displays the result.
   const createContract = async (e) => {
     e.preventDefault();
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     try {
       const response = await axios.post(
         `${BASE_URL}/api/create_contract`,
@@ -51,10 +70,9 @@ function Dashboard({ account, logout, subscription }) {
 
   // Function to create a DAO
   // Sends DAO name and description to the backend (/api/create_dao) to deploy a DAO contract.
-  // Displays the result, including the deployed contract address.
   const createDao = async (e) => {
     e.preventDefault();
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     try {
       const response = await axios.post(
         `${BASE_URL}/api/create_dao`,
@@ -62,11 +80,10 @@ function Dashboard({ account, logout, subscription }) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
       setDaoResult(response.data.message);
-      // Auto-set the DAO address for joining/voting
       const addressMatch = response.data.message.match(/Address: (0x[a-fA-F0-9]{40})/);
       if (addressMatch) setDaoAddress(addressMatch[1]);
     } catch (error) {
-      setDaoResult(error.response?.data?.error || 'Oops! Something is wrong with our system. Please try again later or contact support.');
+      setDaoResult(error.response?.data?.error || 'Oops! Something went wrong. Try again later.');
       console.error('DAO error:', error);
     }
   };
@@ -75,7 +92,7 @@ function Dashboard({ account, logout, subscription }) {
   // Sends the DAO address to the backend (/api/join_dao) to join as a member.
   const joinDao = async (e) => {
     e.preventDefault();
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     if (!daoAddress) return alert('Please enter a DAO address!');
     try {
       const response = await axios.post(
@@ -84,10 +101,9 @@ function Dashboard({ account, logout, subscription }) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
       setJoinResult(response.data.message);
-      // Fetch proposals after joining
       fetchProposals();
     } catch (error) {
-      setJoinResult(error.response?.data?.error || 'Sorry, we couldn not join the DAO. Please try again!');
+      setJoinResult(error.response?.data?.error || 'Sorry, we couldn’t join the DAO. Try again!');
       console.error('Join DAO error:', error);
     }
   };
@@ -96,7 +112,7 @@ function Dashboard({ account, logout, subscription }) {
   // Sends the DAO address and proposal description to the backend (/api/create_proposal).
   const createProposal = async (e) => {
     e.preventDefault();
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     if (!daoAddress) return alert('Please enter a DAO address!');
     if (!proposalDescription) return alert('Please enter a proposal description!');
     try {
@@ -106,11 +122,10 @@ function Dashboard({ account, logout, subscription }) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
       setProposalResult(response.data.message);
-      setProposalDescription(''); // Clear the input
-      // Refresh proposals
+      setProposalDescription('');
       fetchProposals();
     } catch (error) {
-      setProposalResult(error.response?.data?.error || 'Sorry, we couldn\'t create your proposal. Please try again!');
+      setProposalResult(error.response?.data?.error || 'Sorry, we couldn’t create your proposal. Try again!');
       console.error('Create proposal error:', error);
     }
   };
@@ -118,7 +133,7 @@ function Dashboard({ account, logout, subscription }) {
   // Function to vote on a proposal
   // Sends the DAO address, proposal ID, and vote choice to the backend (/api/vote).
   const voteOnProposal = async (proposalId, voteChoice) => {
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     if (!daoAddress) return alert('Please enter a DAO address!');
     try {
       const response = await axios.post(
@@ -127,10 +142,9 @@ function Dashboard({ account, logout, subscription }) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
       setVoteResult(response.data.message);
-      // Refresh proposals
       fetchProposals();
     } catch (error) {
-      setVoteResult(error.response?.data?.error || 'Sorry, we couldn\'t record your vote. Please try again!');
+      setVoteResult(error.response?.data?.error || 'Sorry, we couldn’t record your vote. Try again!');
       console.error('Vote error:', error);
     }
   };
@@ -138,7 +152,7 @@ function Dashboard({ account, logout, subscription }) {
   // Function to fetch proposals for a DAO
   // Calls the backend (/api/get_proposals) to retrieve all proposals.
   const fetchProposals = async () => {
-    if (!daoAddress) return;
+    if (!daoAddress || requireLoginOrSubscription()) return; // Check login and subscription
     try {
       const response = await axios.post(
         `${BASE_URL}/api/get_proposals`,
@@ -156,7 +170,7 @@ function Dashboard({ account, logout, subscription }) {
   // Sends a question to the backend (/api/query) and displays the LLM's answer.
   const askQuery = async (e) => {
     e.preventDefault();
-    if (!account) return alert('Please log in!');
+    if (requireLoginOrSubscription()) return; // Check login and subscription
     try {
       const response = await axios.post(
         `${BASE_URL}/api/query`,
@@ -226,13 +240,12 @@ function Dashboard({ account, logout, subscription }) {
       <p className="text-accent mb-4 text-center">
         {account ? (
           <>
-            Connected: {account.slice(0, 6)}...{account.slice(-4)}{' '}
-            ({subscription})
+            Connected: {account.slice(0, 6)}...{account.slice(-4)} ({subscription})
+            <button onClick={logout} className="ml-2 text-blue-400 hover:underline">Logout</button>
           </>
         ) : (
-          `Not connected - please log in! (Current plan: ${subscription})`
+          'Not connected - log in to unlock all features!'
         )}
-        {account && <button onClick={logout} className="ml-2 text-blue-400 hover:underline">Logout</button>}
       </p>
       {welcomeBanner}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -245,6 +258,7 @@ function Dashboard({ account, logout, subscription }) {
               onChange={(e) => setContractRequest(e.target.value)}
               placeholder="e.g., Send 1 ETH to 0x123..."
               className="w-full p-2 mb-2 text-dark rounded border border-accent"
+              disabled={!account || subscription === 'free'} // Disable for unauthenticated or free users
             />
             <button type="submit" className="bg-primary hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
               Create Contract
@@ -256,10 +270,10 @@ function Dashboard({ account, logout, subscription }) {
           <div className="bg-gray-800 p-4 rounded mb-4">
             <h2 className="text-xl font-bold text-primary">What is a DAO?</h2>
             <p className="text-accent">
-              A DAO (Decentralized Autonomous Organization) is like an online club you control with blockchain!
+              A Decentralized Autonomous Organization is like an online club you control with blockchain!
             </p>
             <p className="text-accent mt-2">
-              Just pick a name and describe what your group is for, dont worry we will handle the tech stuff!
+              Just pick a name and describe what your group is for!
             </p>
             <form onSubmit={createDao} className="mt-4">
               <label className="block text-accent mb-1">Group Name (e.g., MyArtClub or FamilyFund)</label>
@@ -269,6 +283,7 @@ function Dashboard({ account, logout, subscription }) {
                 onChange={(e) => setDaoName(e.target.value)}
                 placeholder="e.g., MyArtClub"
                 className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                disabled={!account || subscription === 'free'}
               />
               <label className="block text-accent mb-1">What is Your Group About? (e.g., A group for artists)</label>
               <textarea
@@ -276,6 +291,7 @@ function Dashboard({ account, logout, subscription }) {
                 onChange={(e) => setDaoDescription(e.target.value)}
                 placeholder="e.g., A group for artists to share work"
                 className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                disabled={!account || subscription === 'free'}
               />
               <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
                 Start My Group
@@ -305,6 +321,7 @@ function Dashboard({ account, logout, subscription }) {
                 onChange={(e) => setDaoAddress(e.target.value)}
                 placeholder="e.g., 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853"
                 className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                disabled={!account || subscription === 'free'}
               />
               <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
                 Join Group
@@ -324,6 +341,7 @@ function Dashboard({ account, logout, subscription }) {
                     onChange={(e) => setProposalDescription(e.target.value)}
                     placeholder="e.g., Host an art event"
                     className="w-full p-2 mb-2 text-dark rounded border border-accent"
+                    disabled={!account || subscription === 'free'}
                   />
                   <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">
                     Propose Idea
@@ -361,7 +379,7 @@ function Dashboard({ account, logout, subscription }) {
                       </div>
                     ))
                   ) : (
-                    <p className="text-accent">No ideas yet propose one above!</p>
+                    <p className="text-accent">No ideas yet—propose one above!</p>
                   )}
                 </div>
                 {voteResult && (
@@ -396,6 +414,7 @@ function Dashboard({ account, logout, subscription }) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ask about crypto..."
               className="w-full p-2 mb-2 text-dark rounded border border-accent"
+              disabled={!account || subscription === 'free'}
             />
             <button type="submit" className="bg-primary hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
               Ask
