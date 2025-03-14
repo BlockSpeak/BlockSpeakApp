@@ -4,7 +4,7 @@
 # Local: Runs at http://127.0.0.1:8080 with Hardhat for testing.
 # Production: Runs at https://blockspeak.onrender.com with Ethereum Mainnet via Alchemy.
 # No HTML here, just JSON responses for everything!
-# Built by Brody and Grok together as OUR brand!w
+
 
 # Imports: All the tools we need to make BlockSpeak work
 import os  # For file system stuff like paths and env variables

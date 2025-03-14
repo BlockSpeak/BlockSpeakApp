@@ -3,7 +3,7 @@
 // Passes authentication state and functions to child components like Subscribe and Success.
 
 import React, { useEffect } from 'react';
-import { Link, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { Link, Routes, Route, useNavigate } from 'react-router-dom'; // Removed Navigate since ProtectedRoute handles it
 import Home from './Home';
 import Dashboard from './Dashboard';
 import Subscribe from './Subscribe';
@@ -13,6 +13,7 @@ import AboutUs from './AboutUs';
 import HowItWorks from './HowItWorks';
 import EmailSignup from './EmailSignup';
 import Login from './Login';
+import ProtectedRoute from './ProtectedRoute'; // Import the ProtectedRoute component for securing routes
 
 function AppContent({
   account,
@@ -61,7 +62,7 @@ function AppContent({
           <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg py-2">
             How It Works
           </Link>
-          {/* Conditionally render Sublink: if logged in, go to /subscribe; else, go to /login?return=/subscribe */}
+          {/* Subscribe link: if logged in, go to /subscribe; else, go to /login?return=/subscribe */}
           {account ? (
             <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg py-2">
               Subscribe
@@ -86,19 +87,25 @@ function AppContent({
               />
             )}
           />
+          {/* Protect /dashboard route: requires authentication, redirects to /login if not logged in */}
+          <Route
+            path="/dashboard"
+            element={(
+              <ProtectedRoute account={account}>
+                <Dashboard account={account} logout={logout} subscription={subscription} />
+              </ProtectedRoute>
+            )}
+          />
+          {/* Protect /subscribe route: requires authentication, redirects to /login if not logged in */}
           {/* Pass setSubscription to Subscribe to allow state updates after payment */}
-          {/* Protect /subscribe route: if not logged in, redirect to /login?return=/subscribe */}
           <Route
             path="/subscribe"
-            element={
-              account ? (
+            element={(
+              <ProtectedRoute account={account}>
                 <Subscribe account={account} subscription={subscription} setSubscription={setSubscription} />
-              ) : (
-                <Navigate to="/login?return=/subscribe" />
-              )
-            }
+              </ProtectedRoute>
+            )}
           />
-          <Route path="/dashboard" element={<Dashboard account={account} logout={logout} subscription={subscription} />} />
           {/* FIX: Added setAccount and setSubscription to Success for state updates */}
           <Route
             path="/success"
