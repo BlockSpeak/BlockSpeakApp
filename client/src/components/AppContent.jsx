@@ -1,10 +1,9 @@
 // AppContent.jsx
-// Purpose: Defines the app’s layout, navigation, and routing.
-// Manages authentication (login/logout) and passes state setters to child components.
+// Purpose: Centralizes routing and layout for BlockSpeak, rendering navigation and page content.
+// Passes authentication state and functions to child components like Subscribe and Success.
 
-import React from 'react';
-import { useNavigate, Link, Routes, Route, useLocation } from 'react-router-dom';
-import axios from 'axios';
+import React, { useEffect } from 'react';
+import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import Home from './Home';
 import Dashboard from './Dashboard';
 import Subscribe from './Subscribe';
@@ -13,69 +12,26 @@ import Marketplace from './Marketplace';
 import AboutUs from './AboutUs';
 import HowItWorks from './HowItWorks';
 import EmailSignup from './EmailSignup';
-import Login from './Login'; // Import the new Login component
+import Login from './Login';
 
-// Base URL toggles between local and production environments
-const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
+function AppContent({
+  account,
+  setAccount,
+  subscription,
+  setSubscription,
+  loginMessage,
+  setLoginMessage,
+  loginWithMetaMask,
+  logout,
+}) {
+  const navigate = useNavigate();
 
-function AppContent({ setAccount, setSubscription, account, subscription }) {
-  const navigate = useNavigate(); // For redirecting after login/logout
-  const location = useLocation(); // Access query params like '?return=...'
-
-  // loginWithMetaMask: Centralized MetaMask login logic
-  // Used by Home and reusable elsewhere; authenticates and redirects based on 'return' param.
-  const loginWithMetaMask = async () => {
-    if (!window.ethereum) {
-      alert('Please install MetaMask!');
-      return; // Early exit if MetaMask isn’t available
+  // Redirect to dashboard if logged in and on home page
+  useEffect(() => {
+    if (account && window.location.pathname === '/') {
+      navigate('/dashboard');
     }
-    try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      const address = accounts[0];
-      const nonce = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' }).then((res) => res.text());
-      const message = `Log in to BlockSpeak: ${nonce}`;
-      const signature = await window.ethereum.request({
-        method: 'personal_sign',
-        params: [message, address],
-      });
-      const response = await fetch(`${BASE_URL}/login/metamask`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature }),
-      });
-      if (response.ok) {
-        setAccount(address);
-        localStorage.setItem('account', address);
-        const homeData = await axios.get(`${BASE_URL}/api/`, { withCredentials: true });
-        setSubscription(homeData.data.subscription);
-        const returnUrl = new URLSearchParams(location.search).get('return') || '/dashboard';
-        navigate(returnUrl);
-      } else {
-        throw new Error('Login failed');
-      }
-    } catch (error) {
-      alert('Login failed, check console!');
-      console.error('Login error:', error);
-    }
-  };
-
-  // logout: Clears user session and redirects to home
-  const logout = async () => {
-    try {
-      await axios.get(`${BASE_URL}/api/logout`, { withCredentials: true });
-      setAccount(null);
-      localStorage.removeItem('account');
-      setSubscription('free');
-      setTimeout(() => navigate('/'), 0); // Immediate redirect to home
-    } catch (error) {
-      console.error('Logout error:', error);
-      setAccount(null); // Clear state even if logout fails
-      localStorage.removeItem('account');
-      setSubscription('free');
-      setTimeout(() => navigate('/'), 0);
-    }
-  };
+  }, [account, navigate]);
 
   return (
     <div className="flex flex-col min-h-screen bg-dark">
@@ -94,12 +50,12 @@ function AppContent({ setAccount, setSubscription, account, subscription }) {
       </nav>
       <main className="flex-grow">
         <Routes>
-          {/* Define app routes and pass required props */}
-          <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} />} />
-          {/* New login route: Handles MetaMask auth and redirects */}
-          <Route path="/login" element={<Login setAccount={setAccount} setSubscription={setSubscription} />} />
+          <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} loginMessage={loginMessage} />} />
+          <Route path="/login" element={<Login loginWithMetaMask={loginWithMetaMask} loginMessage={loginMessage} setLoginMessage={setLoginMessage} />} />
+          {/* Pass setSubscription to Subscribe to allow state updates after payment */}
           <Route path="/subscribe" element={<Subscribe account={account} subscription={subscription} setSubscription={setSubscription} />} />
           <Route path="/dashboard" element={<Dashboard account={account} logout={logout} subscription={subscription} />} />
+          {/* FIX: Added setAccount and setSubscription to Success for state updates */}
           <Route path="/success" element={<Success account={account} setAccount={setAccount} setSubscription={setSubscription} />} />
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/about" element={<AboutUs />} />

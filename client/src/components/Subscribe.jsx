@@ -1,3 +1,4 @@
+// Subscribe.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
@@ -95,21 +96,26 @@ function Subscribe({ account, subscription, setSubscription }) {
   };
 
   // Poll subscription status
-  const pollSubscriptionStatus = (plan) => {
+  const pollSubscriptionStatus = async (plan) => {
     let attempts = 0;
-    const maxAttempts = 24; // 2 minutes (5s * 24)
+    const maxAttempts = 24;
 
     const checkStatus = async () => {
       try {
         const response = await axios.get(`${BASE_URL}/api/subscription_status`, {
           withCredentials: true,
         });
-        if (response.data.subscription === plan) {
-          setSubscription(plan);
+        console.log('Polling response:', response.data);
+        console.log('Expected plan:', plan, 'Received subscription:', response.data.subscription);
+
+        const currentSubscription = response.data.subscription;
+        if (currentSubscription === plan) {
+          setSubscription(currentSubscription); // Update state
           setIsLoading(false);
           navigate('/dashboard');
         } else if (attempts < maxAttempts) {
           attempts += 1;
+          console.log(`Attempt ${attempts}: No match yet`);
           setTimeout(checkStatus, 5000);
         } else {
           setIsLoading(false);
@@ -170,13 +176,13 @@ function Subscribe({ account, subscription, setSubscription }) {
       );
     }
     if (!account) {
+      // Replaced text with a styled button for non-logged-in users
       return (
-        <p className="text-yellow-400 mt-2">
-          <Link to="/login?return=/subscribe" className="text-blue-400 hover:underline">
-            Log in
-          </Link>{' '}
-          to subscribe!
-        </p>
+        <Link to="/login?return=/subscribe">
+          <button className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+            Log in to Subscribe
+          </button>
+        </Link>
       );
     }
     return (

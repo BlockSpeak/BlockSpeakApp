@@ -1,9 +1,9 @@
 // components/Home.jsx
-// landing page with a MetaMask login option, a sneak peek of dashboard features, and a CTA to explore the dashboard.
+// MetaMask login option landing page, a sneak peek of dashboard features, and a CTA to explore the dashboard.
 
 import React from 'react';
 
-function Home({ loginWithMetaMask }) {
+function Home({ loginWithMetaMask, loginMessage }) {
   return (
     <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
       {/* Main heading and branding */}
@@ -16,11 +16,13 @@ function Home({ loginWithMetaMask }) {
       </p>
       {/* Login button */}
       <button
-        onClick={loginWithMetaMask} // Calls the passed login function
+        onClick={loginWithMetaMask} // Calls the login function from useAuth
         className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl flex items-center transition-transform duration-200 hover:scale-105"
       >
         <span>Login with MetaMask</span>
       </button>
+      {/* Display login feedback if there’s a message */}
+      {loginMessage && <p className="text-red-400 mt-4">{loginMessage}</p>}
 
       {/* Sneak Peek Section: Responsive grid of dashboard screenshots */}
       <section style={{ padding: '40px', textAlign: 'center' }}>
@@ -30,22 +32,20 @@ function Home({ loginWithMetaMask }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', // Responsive: stacks on mobile, side-by-side on desktop
-            gap: '20px', // Space between grid items
-            maxWidth: '1200px', // Limits width on large screens
-            margin: '0 auto', // Centers the grid
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '20px',
+            maxWidth: '1200px',
+            margin: '0 auto',
           }}
         >
-          {/* Screenshot 1: Creating the DAO */}
           <div>
             <img
-              src="/creatingthedeao.png" // Path relative to public folder
+              src="/creatingthedeao.png"
               alt="Creating a DAO"
-              style={{ width: '100%', borderRadius: '8px', objectFit: 'cover' }} // Scales image nicely
+              style={{ width: '100%', borderRadius: '8px', objectFit: 'cover' }}
             />
             <p style={{ marginTop: '10px' }}>Create Your DAO in Seconds</p>
           </div>
-          {/* Screenshot 2: Full Dashboard */}
           <div>
             <img
               src="/fulldashboard.png"
@@ -54,7 +54,6 @@ function Home({ loginWithMetaMask }) {
             />
             <p style={{ marginTop: '10px' }}>Manage Everything in One Place</p>
           </div>
-          {/* Screenshot 3: DAO Created */}
           <div>
             <img
               src="/DAO-created.png"
@@ -64,22 +63,21 @@ function Home({ loginWithMetaMask }) {
             <p style={{ marginTop: '10px' }}>See Your DAO Come to Life</p>
           </div>
         </div>
-        {/* CTA Button: Encourages users to explore the dashboard after seeing the sneak peek */}
         <button
-          onClick={loginWithMetaMask} // Reuses the login function for consistency
+          onClick={loginWithMetaMask}
           style={{
-            padding: '15px 30px', // Makes the button big enough to tap easily
-            fontSize: '18px', // Readable text size
-            backgroundColor: '#007BFF', // Bright blue to stand out
-            color: 'white', // White text for contrast
-            borderRadius: '5px', // Rounded corners
-            marginTop: '30px', // Space above the button to separate it from the grid
-            cursor: 'pointer', // Hand icon on hover
-            border: 'none', // No border for a clean look
-            transition: 'background-color 0.3s ease', // Smooth color change on hover
+            padding: '15px 30px',
+            fontSize: '18px',
+            backgroundColor: '#007BFF',
+            color: 'white',
+            borderRadius: '5px',
+            marginTop: '30px',
+            cursor: 'pointer',
+            border: 'none',
+            transition: 'background-color 0.3s ease',
           }}
-          onMouseEnter={(e) => { e.target.style.backgroundColor = '#0056b3'; }} // Darker blue when hovering
-          onMouseLeave={(e) => { e.target.style.backgroundColor = '#007BFF'; }} // Back to original blue when not hovering
+          onMouseEnter={(e) => { e.target.style.backgroundColor = '#0056b3'; }}
+          onMouseLeave={(e) => { e.target.style.backgroundColor = '#007BFF'; }}
         >
           Explore the Dashboard
         </button>

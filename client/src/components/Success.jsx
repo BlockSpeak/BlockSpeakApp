@@ -1,3 +1,4 @@
+// Success.jsx
 // Success component: Confirms subscription and redirects
 // Displays a success message after a subscription payment and redirects to the dashboard.
 import React, { useEffect } from 'react';
