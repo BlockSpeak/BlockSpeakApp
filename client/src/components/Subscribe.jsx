@@ -4,11 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
 // Base URL for local testing or production
-const BASE_URL = (
-  window.location.hostname === 'localhost'
-    ? 'http://127.0.0.1:8080'
-    : 'https://blockspeak.onrender.com'
-);
+const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
 
 function Subscribe({ account, subscription, setSubscription }) {
   const navigate = useNavigate();
