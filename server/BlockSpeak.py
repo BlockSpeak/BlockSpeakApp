@@ -283,6 +283,7 @@ def get_wallet_analytics(address):
         try:
             checksum_address = w3.to_checksum_address(address)  # Ensures address is properly formatted
             balance_wei = w3.eth.get_balance(checksum_address)
+            balance_wei = int(balance_wei)  # Convert from HexBytes to int
             balance_eth = balance_wei / 1e18  # Converts Wei to ETH
             tx_count = w3.eth.get_transaction_count(checksum_address)
             top_tokens = "ETH only"  # Default for Hardhat
