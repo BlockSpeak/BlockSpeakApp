@@ -1,10 +1,11 @@
-// Blog.jsx
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import useAuth from '../hooks/useAuth';
+
+// Empty line added for ESLint
 
 function Blog() {
   const { account } = useAuth();
@@ -12,28 +13,30 @@ function Blog() {
   const [posts, setPosts] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const isLoadingRef = useRef(false); // Using ref instead of state for isLoading
 
-  // Memoized fetchPosts to satisfy ESLint and optimize performance
   const fetchPosts = useCallback(() => {
+    if (isLoadingRef.current || !hasMore) return; // Prevent redundant fetches
+    isLoadingRef.current = true;
     const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
     axios.get(`${baseUrl}/api/blog-posts?page=${page}`)
       .then((response) => {
         setPosts((prevPosts) => [...prevPosts, ...response.data.posts]);
         setHasMore(response.data.hasMore);
-        setPage((prevPage) => prevPage + 1);
+        if (response.data.hasMore) {
+          setPage((prevPage) => prevPage + 1);
+        }
       })
-      .catch((error) => console.error('Error fetching blog posts:', error));
-  }, [page]); // 'page' is a dependency since it’s used inside fetchPosts
-
-  // Fetch posts on mount, with fetchPosts as a dependency
-  useEffect(() => {
-    fetchPosts();
-  }, [fetchPosts]); // Include fetchPosts to satisfy ESLint
+      .catch((error) => console.error('Error fetching blog posts:', error))
+      .finally(() => {
+        isLoadingRef.current = false;
+      });
+  }, [page, hasMore]); // Removed isLoading from dependencies
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!account) setShowLoginPrompt(true);
-    }, 60000); // 1 minute
+    }, 60000);
     return () => clearTimeout(timer);
   }, [account]);
 

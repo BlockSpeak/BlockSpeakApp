@@ -398,26 +398,47 @@ def predict_price(coin, days):
     # Predicts future price based on 30-day trend, not implemented yet as a future feature!
     pass
 
-# NEW: Blog API Endpoints
 @app.route("/api/blog-posts", methods=["GET"])
 def get_blog_posts():
     """API endpoint to fetch all blog posts with pagination."""
-    page = int(request.args.get("page", 1))  # Get page number from query param, default to 1
-    per_page = 6  # Number of posts per page, adjustable
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    # Fetch paginated posts, ordered by creation date descending
-    c.execute("SELECT title, slug, isFree, teaser FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?", 
-              (per_page, (page - 1) * per_page))
-    posts = [{"title": row[0], "slug": row[1], "isFree": bool(row[2]), "teaser": row[3]} for row in c.fetchall()]
-    # Check if there are more posts for infinite scroll
-    c.execute("SELECT COUNT(*) FROM blog_posts")
-    total_posts = c.fetchone()[0]
-    conn.close()
-    return jsonify({
-        "posts": posts,
-        "hasMore": (page * per_page) < total_posts  # True if more posts exist
-    })
+    try:
+        # Get page number, default to 1, ensure it is positive
+        page = max(1, int(request.args.get("page", 1)))
+        per_page = 6  # Fixed number of posts per page
+
+        # Connect to database
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        # Fetch paginated posts
+        offset = (page - 1) * per_page
+        c.execute(
+            "SELECT title, slug, isFree, teaser FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (per_page, offset)
+        )
+        posts = [{"title": row[0], "slug": row[1], "isFree": bool(row[2]), "teaser": row[3]} for row in c.fetchall()]
+
+        # Get total number of posts
+        c.execute("SELECT COUNT(*) FROM blog_posts")
+        total_posts = c.fetchone()[0]
+
+        # Close connection
+        conn.close()
+
+        # Calculate hasMore: true if more posts exist beyond this page
+        has_more = (page * per_page) < total_posts
+
+        # Log for debugging (optional, can be removed in production)
+        app.logger.info(f"Page {page}, fetched {len(posts)} posts, total_posts={total_posts}, hasMore={has_more}")
+
+        return jsonify({
+            "posts": posts,
+            "hasMore": has_more
+        })
+    except Exception as e:
+        app.logger.error(f"Error in get_blog_posts: {str(e)}")
+        return jsonify({"error": "Internal server error"}), 500
+
 
 @app.route("/api/blog-posts/<slug>", methods=["GET"])
 def get_blog_post(slug):
