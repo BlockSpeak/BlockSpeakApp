@@ -10,7 +10,7 @@ function Login({ loginWithMetaMask, loginMessage, setLoginMessage }) {
   const handleLogin = async () => {
     setLoginMessage(''); // Clear previous message
     if (isMobile) {
-      // Redirect mobile users to MetaMask app with your site’s URL
+      // Redirect mobile users to MetaMask app with your sites URL
       window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
     } else {
       // Desktop users proceed with MetaMask login
