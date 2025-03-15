@@ -17,6 +17,7 @@ import Login from './Login';
 import ProtectedRoute from './ProtectedRoute';
 import Faq from './Faq'; // Import Faq
 import Blog from './Blog'; // Import Blog
+import BlogPost from './BlogPost';
 
 function AppContent({
   account,
@@ -127,6 +128,7 @@ function AppContent({
           <Route path="/how-it-works" element={<HowItWorks />} />
           <Route path="/faq" element={<Faq />} /> {/* New FAQ route */}
           <Route path="/blog" element={<Blog />} /> {/* New Blog route */}
+          <Route path="/blog/:slug" element={<BlogPost />} />
         </Routes>
       </main>
       <footer className="bg-gray-800 p-4 w-full">

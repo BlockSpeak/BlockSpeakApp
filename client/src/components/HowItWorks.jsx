@@ -2,6 +2,7 @@
 // Optimized for SEO with structured data, keywords, and user engagement features
 import React from 'react';
 import { Helmet } from 'react-helmet-async'; // For SEO tags
+import { Link } from 'react-router-dom';
 
 function HowItWorks() {
   const metaDescription = 'Discover how BlockSpeak simplifies smart contract creation and crypto questions. Follow this blockchain tutorial to get started today.';
@@ -103,9 +104,9 @@ function HowItWorks() {
 
         {/* Internal Linking */}
         <div className="mt-8 text-center">
-          <a href="/dashboard" className="text-primary hover:underline">Explore Your Dashboard</a> |
-          <a href="/faq" className="text-primary hover:underline">Read Our FAQ</a> |
-          <a href="/blog" className="text-primary hover:underline">Blockchain Blog</a>
+          <Link to="/dashboard" className="text-primary hover:underline">Explore Your Dashboard</Link> |
+          <Link to="/faq" className="text-primary hover:underline">Read Our FAQ</Link> |
+          <Link to="/blog" className="text-primary hover:underline">Blockchain Blog</Link>
         </div>
 
         {/* FAQ Section */}
@@ -115,15 +116,15 @@ function HowItWorks() {
             <h3 className="text-xl font-semibold">What is BlockSpeak?</h3>
             <p>
               BlockSpeak is an innovative platform designed to simplify blockchain interactions.
-              It’s perfect for creating smart contracts and getting quick crypto insights,
+              It is perfect for creating smart contracts and getting quick crypto insights,
               even if you are new to the space.
             </p>
           </div>
           <div className="mt-4">
             <h3 className="text-xl font-semibold">How do I create a smart contract with BlockSpeak?</h3>
             <p>
-              After logging in with MetaMask, enter your contract details in plain English—like
-              deploy an NFT contract and BlockSpeaks AI will build and deploy it for you. It’s that simple!
+              After logging in with MetaMask, enter your contract details in plain English like
+              deploy an NFT contract and BlockSpeaks AI will build and deploy it for you. It is that simple!
             </p>
           </div>
           <div className="mt-4">
