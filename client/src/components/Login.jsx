@@ -1,21 +1,24 @@
-// components/Login.jsx
-// Purpose: Dedicated login page for authenticating users via MetaMask.
-// Uses props from useAuth.js for login logic and feedback.
-
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { isMobile } from 'react-device-detect'; // Added for mobile detection
 
 function Login({ loginWithMetaMask, loginMessage, setLoginMessage }) {
   const navigate = useNavigate(); // For redirecting after login
   const location = useLocation(); // To get the 'return' URL parameter
 
-  // Handle login: Calls loginWithMetaMask and redirects on success
+  // Handle login: Redirects mobile users to MetaMask app, logs in desktop users
   const handleLogin = async () => {
     setLoginMessage(''); // Clear previous message
-    const success = await loginWithMetaMask(); // Attempt login
-    if (success) {
-      const returnUrl = new URLSearchParams(location.search).get('return') || '/dashboard';
-      navigate(returnUrl); // Redirect to return URL or dashboard
+    if (isMobile) {
+      // Redirect mobile users to MetaMask app with your site’s URL
+      window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
+    } else {
+      // Desktop users proceed with MetaMask login
+      const success = await loginWithMetaMask();
+      if (success) {
+        const returnUrl = new URLSearchParams(location.search).get('return') || '/dashboard';
+        navigate(returnUrl); // Redirect to return URL or dashboard
+      }
     }
   };
 

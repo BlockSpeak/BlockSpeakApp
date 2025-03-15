@@ -68,6 +68,7 @@ function AppContent({
           <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg py-2">
             Marketplace
           </Link>
+          <Link to="/blog" className="text-primary hover:text-purple-400 text-lg py-2">Blog</Link>
           <Link to="/about" className="text-primary hover:text-purple-400 text-lg py-2">
             About Us
           </Link>
