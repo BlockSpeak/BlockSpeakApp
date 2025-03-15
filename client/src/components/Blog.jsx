@@ -34,6 +34,10 @@ function Blog() {
   }, [page, hasMore]); // Removed isLoading from dependencies
 
   useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       if (!account) setShowLoginPrompt(true);
     }, 60000);
@@ -79,7 +83,15 @@ function Blog() {
             {posts.map((post) => (
               <div key={post.slug} className="bg-gray-800 p-4 rounded-lg shadow-md">
                 <h2 className="text-2xl font-semibold text-primary">{post.title}</h2>
+                <p className="text-gray-400 text-sm">{post.category || 'Uncategorized'}</p>
                 <p className="text-accent">{post.teaser}</p>
+                {post.tags && post.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {post.tags.map((tag) => (
+                      <span key={tag} className="text-xs bg-purple-600 text-white px-2 py-1 rounded">{tag}</span>
+                    ))}
+                  </div>
+                )}
                 {renderPostLink(post)}
               </div>
             ))}

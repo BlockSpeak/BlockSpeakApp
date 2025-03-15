@@ -404,7 +404,7 @@ def get_blog_posts():
     try:
         # Get page number, default to 1, ensure it is positive
         page = max(1, int(request.args.get("page", 1)))
-        per_page = 6  # Fixed number of posts per page
+        per_page = 10  # Fixed number of posts per page
 
         # Connect to database
         conn = sqlite3.connect("users.db")
@@ -452,6 +452,7 @@ def get_blog_post(slug):
         return jsonify({"title": post[0], "content": post[1]})
     return jsonify({"title": "Not Found", "content": "Post not found."}), 404
 
+
 # API Routes: Where the magic happens!
 @app.route("/nonce")
 def get_nonce():
@@ -461,6 +462,7 @@ def get_nonce():
     session["nonce"] = nonce  # Stores it in the session
     app.logger.info(f"Generated nonce: {nonce}")
     return nonce  # Sends it to the frontend
+
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -491,6 +493,7 @@ def register():
     finally:
         conn.close()
 
+
 @app.route("/api/login", methods=["POST"])
 def login():
     # Logs in a user with email and password
@@ -508,6 +511,7 @@ def login():
         return jsonify({"success": True, "message": "Logged in!", "email": email})
     return jsonify({"error": "Wrong credentials"}), 400  # Bad email or password
 
+
 @app.route("/api/logout")
 @login_required
 def logout():
@@ -515,6 +519,7 @@ def logout():
     # Ends the session
     logout_user()
     return jsonify({"success": True, "message": "Logged out!"})
+
 
 @app.route("/login/metamask", methods=["POST"])
 def login_metamask():
@@ -548,6 +553,7 @@ def login_metamask():
         return jsonify({"error": "Invalid signature"}), 401  # Signature doesnt match
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
+
 
 @app.route("/api/create_contract", methods=["POST"])
 @login_required
@@ -588,6 +594,7 @@ def create_contract():
         except Exception as e:
             return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
     return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"})
+
 
 @app.route("/api/create_dao", methods=["POST"])
 @login_required
@@ -644,6 +651,7 @@ def create_dao():
         app.logger.error(f"DAO creation failed: {str(e)}")
         return jsonify({"error": f"DAO creation failed: {str(e)}"}), 500
 
+
 @app.route("/api/join_dao", methods=["POST"])
 @login_required
 def join_dao():
@@ -692,6 +700,7 @@ def join_dao():
         app.logger.error(f"Join DAO failed: {str(e)}")
         return jsonify({"error": f"Sorry, joining the DAO did not work: {str(e)}"}), 500
 
+
 @app.route("/api/create_proposal", methods=["POST"])
 @login_required
 def create_proposal():
@@ -730,6 +739,7 @@ def create_proposal():
     except Exception as e:
         app.logger.error(f"Create proposal failed: {str(e)}")
         return jsonify({"error": f"Failed to create proposal: {str(e)}"}), 500
+
 
 @app.route("/api/vote", methods=["POST"])
 @login_required
@@ -771,6 +781,7 @@ def vote():
         app.logger.error(f"Vote failed: {str(e)}")
         return jsonify({"error": f"Failed to vote: {str(e)}"}), 500
 
+
 @app.route("/api/get_proposals", methods=["POST"])
 @login_required
 def get_proposals():
@@ -804,6 +815,37 @@ def get_proposals():
         app.logger.error(f"Get proposals failed: {str(e)}")
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
+
+'''
+def add_bulk_blog_posts():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM blog_posts")
+    if c.fetchone()[0] >= 50:  # Skip if already populated
+        conn.close()
+        return
+    posts = [
+        ("Bitcoin Halving 2024 Explained", "bitcoin halving 2024", 1, "What is the next halving?", "Details on Bitcoins 2024 halving...", "Crypto", "bitcoin,halving"),
+        ("Ethereums Merge: One Year Later", "eth merge year later", 1, "How did it change ETH?", "A review of Ethereums PoS shift...", "Crypto", "ethereum,merge"),
+        ("Web3 Gaming Revolution", "web3-gaming", 1, "Gaming on blockchain?", "Exploring Web3 gaming trends...", "Web3", "gaming,web3"),
+        ("LLMs in Crypto Trading", "llm-crypto-trading", 0, "AI meets trading...", "How LLMs enhance trading bots...", "Tech,LLM", "ai,trading"),
+        # Add 46 more...
+    ] + [
+        (f"Crypto News Update {i}", f"crypto-news-{i}", 1, f"Update #{i} on crypto...", f"Content for update #{i}...", "Crypto", "news")
+        for i in range(4, 50)
+    ]
+    c.executemany(
+        "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        posts
+    )
+    conn.commit()
+    conn.close()
+    app.logger.info("Added 50 blog posts to the database.")
+
+add_bulk_blog_posts()  # Run once, then comment out
+'''
+
+
 @app.route("/api/analytics/<address>")
 @login_required
 def get_analytics(address):
@@ -812,11 +854,13 @@ def get_analytics(address):
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
 
+
 @app.route("/api/news")
 def get_news_api():
     # Returns latest crypto news
     # Simple endpoint for the news section
     return jsonify(get_news_items())
+
 
 @app.route("/api/query", methods=["POST"])
 @login_required
@@ -848,6 +892,7 @@ def query():
     current_user.history = history[:3]
     return jsonify({"answer": answer, "question": user_question, "history": history[:3]})
 
+
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
@@ -872,10 +917,12 @@ def subscribe():
         app.logger.error(f"Stripe error: {str(e)}")
         return jsonify({"error": "Subscription failed"}), 500
 
+
 @app.route("/api/get_payment_address", methods=["GET"])
 def get_payment_address():
     """Return the ETH payment address for subscriptions."""
     return jsonify({"eth_payment_address": ETH_PAYMENT_ADDRESS}), 200
+
 
 @app.route("/api/subscription_status", methods=["GET"])
 @login_required
@@ -894,6 +941,7 @@ def subscription_status():
     except Exception as e:
         app.logger.error(f"Error fetching subscription status for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to fetch subscription status"}), 500
+
 
 @app.route("/api/subscribe_eth", methods=["POST"])
 @login_required
@@ -950,6 +998,7 @@ def subscribe_eth():
             error_details["possible_causes"].append("Unexpected error, check logs for stack trace")
         return jsonify(error_details), 500
 
+
 @app.route("/api/subscription_success")
 @login_required
 def subscription_success():
@@ -966,6 +1015,7 @@ def subscription_success():
             conn.close()
             return jsonify({"success": True, "message": "Subscription confirmed"})
     return jsonify({"error": "Subscription not confirmed"}), 500
+
 
 @app.route("/api/")
 def home_api():
@@ -984,6 +1034,7 @@ def coin_graph(coin_id):
     # Returns 7-day price graph data for a coin
     # Used for the dashboard graph
     return jsonify(get_coin_graph(coin_id))
+
 
 @app.route("/api/update_account", methods=["POST"])
 @login_required
@@ -1008,6 +1059,7 @@ def update_account():
         app.logger.error(f"Update account failed for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to update account"}), 500
 
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
@@ -1016,6 +1068,7 @@ def catch_all(path):
     if path.startswith("api/") or path == "nonce" or path == "login/metamask":
         return app.handle_url_build_error(None, path, None)
     return redirect("https://blockspeak.co", code=302)
+
 
 @app.before_request
 def start_session():
