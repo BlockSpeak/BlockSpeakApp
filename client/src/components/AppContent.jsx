@@ -3,7 +3,8 @@
 // Passes authentication state and functions to child components like Subscribe and Success.
 
 import React, { useEffect } from 'react';
-import { Link, Routes, Route, useNavigate } from 'react-router-dom'; // Removed Navigate since ProtectedRoute handles it
+import { Link, Routes, Route, useNavigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async'; // Helmet for default SEO tags
 import Home from './Home';
 import Dashboard from './Dashboard';
 import Subscribe from './Subscribe';
@@ -13,7 +14,7 @@ import AboutUs from './AboutUs';
 import HowItWorks from './HowItWorks';
 import EmailSignup from './EmailSignup';
 import Login from './Login';
-import ProtectedRoute from './ProtectedRoute'; // Import the ProtectedRoute component for securing routes
+import ProtectedRoute from './ProtectedRoute';
 
 function AppContent({
   account,
@@ -36,6 +37,14 @@ function AppContent({
 
   return (
     <div className="flex flex-col min-h-screen bg-dark">
+      {/* Set default SEO tags for the entire app */}
+      <Helmet>
+        <title>BlockSpeak - Blockchain Tools & Smart Contracts</title>
+        <meta
+          name="description"
+          content="BlockSpeak: Create smart contracts, explore DAOs, and manage your blockchain journey with ease."
+        />
+      </Helmet>
       <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0 text-center sm:text-left">
         <Link to="/">
           <img
@@ -64,11 +73,11 @@ function AppContent({
           </Link>
           {/* Subscribe link: if logged in, go to /subscribe; else, go to /login?return=/subscribe */}
           {account ? (
-            <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg py-2">
+            <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg py-2" rel="nofollow">
               Subscribe
             </Link>
           ) : (
-            <Link to="/login?return=/subscribe" className="text-primary hover:text-purple-400 text-lg py-2">
+            <Link to="/login?return=/subscribe" className="text-primary hover:text-purple-400 text-lg py-2" rel="nofollow">
               Subscribe
             </Link>
           )}
