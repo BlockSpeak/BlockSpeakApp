@@ -15,6 +15,8 @@ import HowItWorks from './HowItWorks';
 import EmailSignup from './EmailSignup';
 import Login from './Login';
 import ProtectedRoute from './ProtectedRoute';
+import Faq from './Faq'; // Import Faq
+import Blog from './Blog'; // Import Blog
 
 function AppContent({
   account,
@@ -123,6 +125,8 @@ function AppContent({
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
+          <Route path="/faq" element={<Faq />} /> {/* New FAQ route */}
+          <Route path="/blog" element={<Blog />} /> {/* New Blog route */}
         </Routes>
       </main>
       <footer className="bg-gray-800 p-4 w-full">

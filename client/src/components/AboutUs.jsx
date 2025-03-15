@@ -66,7 +66,7 @@ function AboutUs() {
         BlockSpeak empowers you to harness blockchain with no-code contracts and
         crypto insights. Whether you are an individual exploring Web3 for the first time,
         or a business aiming to launch decentralized solutions, we streamline the process
-        so you can focus on what matters—growing your ideas.
+        so you can focus on what matters growing your ideas.
       </p>
 
       <p className="text-accent text-center max-w-2xl mx-auto mb-8">
@@ -91,7 +91,7 @@ function AboutUs() {
       </div>
 
       <p className="text-accent text-center max-w-2xl mx-auto mb-12">
-        Creating a DAO is just a few clicks away with BlockSpeak’s user-friendly interface.
+        Creating a DAO is just a few clicks away with BlockSpeaks user-friendly interface.
         From simple governance tokens to advanced voting mechanisms, our no-code approach
         ensures anyone can spin up a DAO without deep technical knowledge.
       </p>
