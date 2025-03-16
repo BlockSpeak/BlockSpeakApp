@@ -837,7 +837,7 @@ def get_proposals():
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
 
-def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
+def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
     """Add blog posts to the database with AI-generated, SEO-friendly content.
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
@@ -862,10 +862,15 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
             c.execute("DELETE FROM blog_posts")
             current_count = 0
 
-        def create_slug(title, index):
-            """Convert title to SEO-friendly slug with an index to avoid duplicates."""
+        def create_unique_slug(title, existing_slugs):
+            """Generate a unique slug based on title, avoiding duplicates."""
             base_slug = re.sub(r'[^a-z0-9-]+', '-', title.lower().replace(' ', '-')).strip('-')
-            return f"{base_slug}-{index}" if index > 0 else base_slug
+            slug = base_slug
+            counter = 1
+            while slug in existing_slugs:
+                slug = f"{base_slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}-{counter}"
+                counter += 1
+            return slug
 
         def fetch_image_url(keyword):
             """Fetch an image URL from Unsplash based on a keyword and save it locally."""
@@ -879,7 +884,7 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
                 ).json()
                 image_url = response.get("urls", {}).get("regular", "blockspeakvert.svg")
                 if image_url != "blockspeakvert.svg":
-                    image_name = f"{create_slug(keyword, 0)}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                    image_name = f"{re.sub(r'[^a-z0-9-]+', '-', keyword.lower())}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
                     image_path = os.path.join("static/images", image_name)
                     os.makedirs(os.path.dirname(image_path), exist_ok=True)
                     with open(image_path, "wb") as f:
@@ -889,75 +894,63 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
                 app.logger.error(f"Failed to fetch image from Unsplash for keyword '{keyword}': {str(e)}")
             return "blockspeakvert.svg"
 
-        def generate_post_content(title, category, tags):
-            """Generate blog post content, teaser, and metadata using OpenAI."""
+        def generate_post_content(title, category, tags, is_premium=False):
+            """Generate blog post content, teaser, and metadata using OpenAI with premium option."""
             prompt = (
-                f"Write a 500-word blog post on '{title}'. Include a 150-character teaser description "
-                "and 5 SEO keywords. Ensure the content is engaging, informative, and encourages daily visits "
-                "or subscriptions for premium insights. Format as:\n"
-                "Content:\n<your 500-word content>\nTeaser:\n<150-char description>\nKeywords:\n<keyword1>,<keyword2>,<keyword3>,<keyword4>,<keyword5>"
+                f"Write a {500 if not is_premium else 1000}-word blog post on '{title}'. "
+                f"Include a {150 if not is_premium else 300}-character teaser description and 5 SEO keywords. "
+                f"Ensure the content is engaging, informative, and encourages daily visits or subscriptions "
+                f"{'for premium insights' if is_premium else ''}. Format as:\n"
+                "Content:\n<your content>\nTeaser:\n<teaser description>\nKeywords:\n<keyword1>,<keyword2>,<keyword3>,<keyword4>,<keyword5>"
             )
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=700
+                max_tokens=700 if not is_premium else 1200
             )
             content = response.choices[0].message.content
             sections = content.split("\nTeaser:\n")
             post_content = sections[0].replace("Content:\n", "").strip()
             if len(sections) < 2:
-                teaser = f"Discover daily insights on {title.lower()} in blockchain."
+                teaser = f"Discover insights on {title.lower()} in blockchain."
                 keywords = tags.split(",")
             else:
                 teaser_section = sections[1].split("\nKeywords:\n")
-                teaser = teaser_section[0][:150].strip()
+                teaser = teaser_section[0][:150 if not is_premium else 300].strip()
                 keywords = teaser_section[1].split(",")[:5] if len(teaser_section) > 1 else tags.split(",")
             image = fetch_image_url(keywords[0])
             return post_content, teaser, ",".join(keywords), image
 
-        # Generate posts with diverse, engaging topics
-        base_topics = [
-            ("Bitcoin Halving 2024 Explained", "Crypto", "bitcoin,halving,crypto"),
-            ("Ethereums Merge One Year Later", "Crypto", "ethereum,merge,stake"),
-            ("Web3 Gaming Revolution", "Web3", "gaming,web3,nft"),
-            ("LLMs in Crypto Trading", "Tech,LLM", "ai,trading,crypto"),
-            ("Daily Crypto Market Update", "Crypto", "crypto,market,news"),
-        ]
-        # Ensure unique titles for scaling
-        additional_topics = [
-            f"Daily Crypto Market Analysis {datetime.now().strftime('%Y-%m-%d')}",
-            f"Top Web3 Innovations to Watch Today",
-            f"Blockchain in Supply Chain: Daily Insights",
-            f"AI-Powered Crypto Trends You Need Now",
-            f"DeFi Explained: Todays Deep Dive",
-            f"Bitcoin vs Ethereum: Daily Showdown",
-            f"NFT Art Market Update Today",
-            f"Smart Contracts: Daily Expert Tips",
-            f"Crypto Regulation News Flash",
-            f"Web3 Social Media Trends Today",
-        ]
-        topics_cycle = []
-        for idx in range(num_posts - len(base_topics)):
-            topic = additional_topics[idx % len(additional_topics)]
-            count = idx // len(additional_topics)
-            if count > 0:
-                topic = f"{topic} (Update {count})"
-            topics_cycle.append(topic)
-        all_topics = base_topics + [
-            (topics_cycle[i], "Crypto" if "Crypto" in topics_cycle[i] else "Web3" if "Web3" in topics_cycle[i] else "Tech",
-             "crypto,market" if "Crypto" in topics_cycle[i] else "web3,nft" if "Web3" in topics_cycle[i] else "ai,tech")
-            for i in range(len(topics_cycle))
-        ]
+        # Fetch existing slugs to avoid duplicates
+        c.execute("SELECT slug FROM blog_posts")
+        existing_slugs = {row[0] for row in c.fetchall()}
+
+        # Dynamic subject pool with randomization
+        subjects = {
+            "Crypto": ["Bitcoin Analysis", "Ethereum Updates", "DeFi Trends", "Crypto Market Insights", "NFT Market"],
+            "Web3": ["Web3 Gaming", "Decentralized Apps", "Blockchain Identity", "Web3 Adoption", "Smart Contracts"],
+            "Tech": ["AI in Blockchain", "Machine Learning Trading", "Tech Innovations", "Data Security", "Cloud Computing"]
+        }
+        prefixes = ["Latest", "Breaking", "In-Depth", "Expert", "Daily"]
+        suffixes = ["Guide", "Review", "Overview", "Forecast", "Insights"]
 
         posts = []
-        for i, (title, category, tags) in enumerate(all_topics):
-            print(f"Generating post {i+1}/{num_posts}: {title}")
-            content, teaser, keywords, image = generate_post_content(title, category, tags)
-            pub_date = datetime.now() - timedelta(days=(num_posts - i - 1))
+        for i in range(num_posts):
+            category = random.choice(list(subjects.keys()))
+            subject = random.choice(subjects[category])
+            prefix = random.choice(prefixes)
+            suffix = random.choice(suffixes)
+            title = f"{prefix} {subject} {suffix}"
+            tags = ",".join(random.sample(["blockchain", "crypto", "web3", "nft", "ai", "trading", "market"], 5))
+            is_premium = random.random() < 0.3  # 30% chance of premium content
+            content, teaser, keywords, image = generate_post_content(title, category, tags, is_premium)
+            slug = create_unique_slug(title, existing_slugs)
+            existing_slugs.add(slug)
+            pub_date = datetime.now() - timedelta(days=random.randint(0, 30))  # Random date in last 30 days
             posts.append((
                 title,
-                create_slug(title, i),
-                1 if i % 2 == 0 else 0,
+                slug,
+                1 if not is_premium else 0,
                 teaser,
                 content,
                 category,
@@ -965,13 +958,14 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
                 pub_date.strftime('%Y-%m-%d'),
                 image
             ))
+            print(f"Generating post {i+1}/{num_posts}: {title} (Premium: {is_premium})")
 
         c.executemany(
             "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags, created_at, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             posts
         )
         conn.commit()
-        app.logger.info(f"Successfully added {len(posts)} blog posts with images. Total posts: {current_count + len(posts)}")
+        app.logger.info(f"Successfully added {len(posts)} unique blog posts with images. Total posts: {current_count + len(posts)}")
     except sqlite3.IntegrityError as e:
         app.logger.error(f"Duplicate slug error: {e}")
         conn.rollback()
@@ -981,9 +975,12 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
     finally:
         conn.close()
 
+import random  # Add this at the top with other imports
+
 # Run with new_posts_only=False to replace existing posts, then comment out
-# add_bulk_blog_posts(new_posts_only=True)
+add_bulk_blog_posts(new_posts_only=False)
 # For future use: add_bulk_blog_posts(new_posts_only=True)
+
 
 @app.route("/api/analytics/<address>")
 @login_required
