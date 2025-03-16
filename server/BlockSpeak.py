@@ -113,22 +113,32 @@ login_manager.init_app(app)
 
 # Database setup: Simple SQLite for users and blog posts
 def init_db():
-    # Creates the users and blog_posts tables if they dont exist
-    # Stores user email, password, subscription, Stripe ID, and query history
-    # NEW: Also stores blog posts for dynamic content
-    conn = sqlite3.connect("users.db")  # Connects to users.db file
+    """Creates the users and blog_posts tables if they don't exist."""
+    conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-        subscription TEXT DEFAULT 'free', stripe_customer_id TEXT, history TEXT DEFAULT '[]')''')
-    # NEW: Create blog_posts table
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        subscription TEXT DEFAULT 'free',
+        stripe_customer_id TEXT,
+        history TEXT DEFAULT '[]')''')
     c.execute('''CREATE TABLE IF NOT EXISTS blog_posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, slug TEXT UNIQUE NOT NULL,
-        isFree INTEGER DEFAULT 1, teaser TEXT, content TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    conn.commit()  # Saves changes
-    conn.close()  # Closes connection
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        slug TEXT UNIQUE NOT NULL,
+        isFree INTEGER DEFAULT 1,
+        teaser TEXT,
+        content TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        category TEXT DEFAULT 'General',
+        tags TEXT DEFAULT '',
+        image TEXT DEFAULT 'blockspeakvert.svg')''')
+    conn.commit()
+    conn.close()
 
 init_db()  # Runs the setup right away
+
 
 # NEW: Seed the blog posts table with sample data (optional)
 def seed_blog_posts():
@@ -148,7 +158,7 @@ def seed_blog_posts():
         conn.commit()
     conn.close()
 
-seed_blog_posts()  # Seed the database with initial posts (optional, remove if not needed)
+# seed_blog_posts()  # Seed the database with initial posts (optional, remove if not needed)
 
 # User class for Flask-Login
 class User(UserMixin):
@@ -825,57 +835,118 @@ def get_proposals():
         app.logger.error(f"Get proposals failed: {str(e)}")
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
-'''
-def add_bulk_blog_posts(new_posts_only=False):
-    """Add 50 blog posts to the database with SEO-friendly slugs, categories, and tags.
-    If new_posts_only is True, appends only new posts without replacing existing ones."""
+
+def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
+    """Add blog posts to the database with AI-generated, SEO-friendly content.
+    If new_posts_only is True, appends new posts without replacing existing ones.
+    Args:
+        new_posts_only (bool): If True, appends posts; if False, replaces all posts.
+        num_posts (int): Number of posts to generate (default to 5 for initial automation).
+    """
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     try:
+        # Initialize OpenAI client
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if not client:
+            raise ValueError("OpenAI API key not set in environment variables.")
+
+        # Check current post count
         c.execute("SELECT COUNT(*) FROM blog_posts")
         current_count = c.fetchone()[0]
-        if new_posts_only and current_count >= 50:
-            app.logger.info("Database contains 50+ posts, appending new posts only.")
-        elif not new_posts_only and current_count >= 50:
-            app.logger.info("Clearing existing posts to replace with new 50.")
+        if new_posts_only and current_count >= num_posts:
+            app.logger.info(f"Database contains {current_count} posts, appending new posts only.")
+        elif not new_posts_only and current_count > 0:
+            app.logger.info("Clearing existing posts to replace with new ones.")
             c.execute("DELETE FROM blog_posts")
             current_count = 0
 
-        def create_slug(title):
-            """Convert title to SEO-friendly slug: lowercase, hyphens, no special chars."""
-            return re.sub(r'[^a-z0-9-]+', '-', title.lower().replace(' ', '-')).strip('-')
+        def create_slug(title, index):
+            """Convert title to SEO-friendly slug with an index to avoid duplicates."""
+            base_slug = re.sub(r'[^a-z0-9-]+', '-', title.lower().replace(' ', '-')).strip('-')
+            return f"{base_slug}-{index}" if index > 0 else base_slug
 
-        posts = [
-            ("Bitcoin Halving 2024 Explained", create_slug("Bitcoin Halving 2024 Explained"), 1,
-             "Whats the next Bitcoin halving in 2024?",
-             "Bitcoins 2024 halving will reduce mining rewards, impacting price. Learn the details...",
-             "Crypto", "bitcoin,halving,crypto"),
-            ("Ethereums Merge: One Year Later", create_slug("Ethereums Merge: One Year Later"), 1,
-             "How has Ethereum changed post-Merge?",
-             "A year after the Merge, Ethereums shift to PoS has reshaped its ecosystem...",
-             "Crypto", "ethereum,merge,proof-of-stake"),
-            ("Web3 Gaming Revolution", create_slug("Web3 Gaming Revolution"), 1,
-             "Is gaming the future of Web3?",
-             "Web3 gaming introduces ownership with NFTs. Discover the latest trends...",
-             "Web3", "gaming,web3,nft"),
-            ("LLMs in Crypto Trading", create_slug("LLMs in Crypto Trading"), 0,
-             "Can AI revolutionize crypto trading?",
-             "LLMs enhance crypto trading with predictive analytics. Dive into the tech...",
-             "Tech,LLM", "ai,trading,crypto"),
-        ] + [
-            (f"Crypto News Update {i}", create_slug(f"Crypto News Update {i}"), 1,
-             f"Get update #{i} on crypto!",
-             f"The {i}th update on cryptocurrency trends and market movements...",
-             "Crypto", "news,crypto,market")
-            for i in range(4, 50)
+        def fetch_image_url(keyword):
+            """Fetch an image URL from Unsplash based on a keyword and save it locally."""
+            api_key = os.getenv("UNSPLASH_API_KEY")
+            if not api_key:
+                app.logger.warning("Unsplash API key not set, using fallback image.")
+                return "blockspeakvert.svg"
+            try:
+                response = requests.get(
+                    f"https://api.unsplash.com/photos/random?query={keyword}&client_id={api_key}"
+                ).json()
+                image_url = response.get("urls", {}).get("regular", "blockspeakvert.svg")
+                if image_url != "blockspeakvert.svg":
+                    image_name = f"{create_slug(keyword, 0)}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                    image_path = os.path.join("static/images", image_name)
+                    os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                    with open(image_path, "wb") as f:
+                        f.write(requests.get(image_url).content)
+                    return image_name
+            except Exception as e:
+                app.logger.error(f"Failed to fetch image from Unsplash for keyword '{keyword}': {str(e)}")
+            return "blockspeakvert.svg"
+
+        def generate_post_content(title, category, tags):
+            """Generate blog post content, teaser, and metadata using OpenAI."""
+            prompt = (
+                f"Write a 500-word blog post on '{title}'. Include a 150-character teaser description "
+                "and 5 SEO keywords. Ensure the content is engaging, informative, and encourages daily visits "
+                "or subscriptions for premium insights. Format as:\n"
+                "Content:\n<your 500-word content>\nTeaser:\n<150-char description>\nKeywords:\n<keyword1>,<keyword2>,<keyword3>,<keyword4>,<keyword5>"
+            )
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=700
+            )
+            content = response.choices[0].message.content
+            sections = content.split("\nTeaser:\n")
+            post_content = sections[0].replace("Content:\n", "").strip()
+            if len(sections) < 2:
+                teaser = f"Discover daily insights on {title.lower()} in blockchain."
+                keywords = tags.split(",")
+            else:
+                teaser_section = sections[1].split("\nKeywords:\n")
+                teaser = teaser_section[0][:150].strip()
+                keywords = teaser_section[1].split(",")[:5] if len(teaser_section) > 1 else tags.split(",")
+            image = fetch_image_url(keywords[0])
+            return post_content, teaser, ",".join(keywords), image
+
+        # Generate posts with diverse, engaging topics
+        base_topics = [
+            ("Bitcoin Halving 2024 Explained", "Crypto", "bitcoin,halving,crypto"),
+            ("Ethereums Merge One Year Later", "Crypto", "ethereum,merge,stake"),
+            ("Web3 Gaming Revolution", "Web3", "gaming,web3,nft"),
+            ("LLMs in Crypto Trading", "Tech,LLM", "ai,trading,crypto"),
+            ("Daily Crypto Market Update", "Crypto", "crypto,market,news"),
         ]
+        all_topics = base_topics[:num_posts]  # Use only the first 5 topics
+
+        posts = []
+        for i, (title, category, tags) in enumerate(all_topics):
+            print(f"Generating post {i+1}/{num_posts}: {title}")
+            content, teaser, keywords, image = generate_post_content(title, category, tags)
+            pub_date = datetime.now() - timedelta(days=(num_posts - i - 1))
+            posts.append((
+                title,
+                create_slug(title, i),
+                1 if i % 2 == 0 else 0,
+                teaser,
+                content,
+                category,
+                keywords,
+                pub_date.strftime('%Y-%m-%d'),
+                image
+            ))
 
         c.executemany(
-            "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags, created_at, image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             posts
         )
         conn.commit()
-        app.logger.info(f"Successfully added {len(posts)} blog posts. Total posts: {current_count + len(posts)}")
+        app.logger.info(f"Successfully added {len(posts)} blog posts with images. Total posts: {current_count + len(posts)}")
     except sqlite3.IntegrityError as e:
         app.logger.error(f"Duplicate slug error: {e}")
         conn.rollback()
@@ -884,11 +955,9 @@ def add_bulk_blog_posts(new_posts_only=False):
         conn.rollback()
     finally:
         conn.close()
-# Run with new_posts_only=False to replace, then comment out
-add_bulk_blog_posts(new_posts_only=False)
+# Run with new_posts_only=False to replace existing posts, then comment out
+# add_bulk_blog_posts(new_posts_only=False)
 # For future use: add_bulk_blog_posts(new_posts_only=True)
-'''
-
 
 @app.route("/api/analytics/<address>")
 @login_required
@@ -1121,6 +1190,16 @@ def start_session():
     if "nonce" not in session:
         session["nonce"] = None
 
+
+# Serve static images
+@app.route("/images/<filename>")
+def serve_image(filename):
+    return send_from_directory("static/images", filename)
+
+
 if __name__ == "__main__":
-    # Runs the app locally for testing
-    app.run(host="0.0.0.0", port=8080, debug=True)  # Listens on all interfaces, port 8080, with debug mode on
+    import sys
+    if "--cron" in sys.argv:
+        add_bulk_blog_posts(new_posts_only=True, num_posts=5)
+    else:
+        app.run(host="0.0.0.0", port=8080, debug=True)
