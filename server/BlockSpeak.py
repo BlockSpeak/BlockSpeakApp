@@ -41,6 +41,7 @@ from eth_account.messages import encode_defunct  # For MetaMask login signing me
 from werkzeug.security import generate_password_hash  # Secures passwords
 from werkzeug.security import check_password_hash  # Checks hashed passwords
 import random  # For randomizing titles and attributes
+from requests.exceptions import HTTPError
 
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
@@ -112,6 +113,73 @@ client = OpenAI(api_key=OPENAI_API_KEY)  # Initialize OpenAI client for ChatGPT
 # Keeps track of whos logged in with email or MetaMask address
 login_manager = LoginManager()
 login_manager.init_app(app)
+
+
+# Set CSP header including frame-ancestors
+@app.after_request
+def apply_csp(response):
+    csp = (
+        "default-src 'self';"
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "https://www.google-analytics.com "
+        "https://www.googletagmanager.com "
+        "https://blockspeak.disqus.com "
+        "https://c.disquscdn.com "
+        "https://disqus.com"
+        "https://d-code.liadm.com "
+        "https://launchpad-wrapper.privacymanager.io;"
+        "style-src 'self' 'unsafe-inline' "
+        "https://fonts.googleapis.com "
+        "https://c.disquscdn.com "
+        "https://*.disquscdn.com;"
+        "connect-src 'self' "
+        "http://127.0.0.1:8080 "
+        "https://blockspeak.onrender.com "
+        "https://blockspeak-backend.onrender.com "
+        "ws://127.0.0.1:8080 "
+        "wss://blockspeak.onrender.com "
+        "https://www.google-analytics.com "
+        "https://www.googletagmanager.com "
+        "https://blockspeak.disqus.com "
+        "https://c.disquscdn.com "
+        "https://disqus.com "
+        "https://links.services.disqus.com;"
+        "img-src 'self' data: "
+        "http://127.0.0.1:8080 "
+        "https://blockspeak.onrender.com "
+        "https://blockspeak-backend.onrender.com "
+        "https://assets.coincap.io "
+        "https://www.google-analytics.com "
+        "https://c.disquscdn.com "
+        "https://referrer.disqus.com "
+        "https://disqus.com;"
+        "font-src 'self' "
+        "https://fonts.googleapis.com "
+        "https://fonts.gstatic.com;"
+        "frame-src 'self' "
+        "https://disqus.com "
+        "https://*.disqus.com "
+        "https://disquscdn.com "
+        "https://*.disquscdn.com "
+        "https://help.disqus.com;"
+        "frame-ancestors 'self' "
+        "https://intercomrades.support "
+        "https://intercom.skilljar.com "
+        "https://academy.intercom.com "
+        "https://academy.guests.intercom.com "
+        "https://app.intercom.com "
+        "https://app.eu.intercom.com "
+        "https://app.au.intercom.com "
+        "https://intercomrades.intercom.com "
+        "https://intercomrades.eu.intercom.com "
+        "https://intercomrades.au.intercom.com "
+        "https://disqus.com "
+        "https://*.disqus.com "
+        "https://help.disqus.com;"
+    )
+    response.headers['Content-Security-Policy'] = csp
+    return response
+
 
 # Database setup: Simple SQLite for users and blog posts
 def init_db():
@@ -768,6 +836,7 @@ def create_proposal():
         app.logger.error(f"Create proposal failed: {str(e)}")
         return jsonify({"error": f"Failed to create proposal: {str(e)}"}), 500
 
+
 @app.route("/api/vote", methods=["POST"])
 @login_required
 def vote():
@@ -843,7 +912,7 @@ def get_proposals():
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
 
-def add_bulk_blog_posts(new_posts_only=True, num_posts=3):
+def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
     """Add blog posts to the database with AI-generated, SEO-friendly content.
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
@@ -1046,7 +1115,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=3):
         conn.close()
 
 # Run with new_posts_only=False to replace existing posts above, run this one below for testing then comment out after run.
-add_bulk_blog_posts(new_posts_only=True) 
+# add_bulk_blog_posts(new_posts_only=True) 
 
 
 @app.route("/api/analytics/<address>")
@@ -1277,6 +1346,6 @@ def serve_image(filename):
 if __name__ == "__main__":
     import sys
     if "--cron" in sys.argv:
-        add_bulk_blog_posts(new_posts_only=True, num_posts=3)
+        add_bulk_blog_posts(new_posts_only=True, num_posts=1)
     else:
         app.run(host="0.0.0.0", port=8080, debug=False)
