@@ -825,7 +825,7 @@ def get_proposals():
         app.logger.error(f"Get proposals failed: {str(e)}")
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
-
+'''
 def add_bulk_blog_posts(new_posts_only=False):
     """Add 50 blog posts to the database with SEO-friendly slugs, categories, and tags.
     If new_posts_only is True, appends only new posts without replacing existing ones."""
@@ -884,11 +884,10 @@ def add_bulk_blog_posts(new_posts_only=False):
         conn.rollback()
     finally:
         conn.close()
-
-
 # Run with new_posts_only=False to replace, then comment out
 add_bulk_blog_posts(new_posts_only=False)
 # For future use: add_bulk_blog_posts(new_posts_only=True)
+'''
 
 
 @app.route("/api/analytics/<address>")
