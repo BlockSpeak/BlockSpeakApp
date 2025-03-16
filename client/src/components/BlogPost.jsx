@@ -48,7 +48,7 @@ function BlogPost() {
             author: { '@type': 'Organization', name: 'BlockSpeak' },
             datePublished: post.created_at || new Date().toISOString(),
             keywords: post.tags ? post.tags.join(', ') : 'blockchain, crypto',
-            image: imageSrc
+            image: imageSrc,
           })}
         </script>
       </Helmet>

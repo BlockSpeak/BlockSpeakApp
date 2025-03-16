@@ -950,7 +950,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
             posts.append((
                 title,
                 slug,
-                1 if not is_premium else 0,
+                1 if not is_premium else 0, # isFree is false for premium
                 teaser,
                 content,
                 category,
@@ -978,7 +978,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
 import random  # Add this at the top with other imports
 
 # Run with new_posts_only=False to replace existing posts, then comment out
-add_bulk_blog_posts(new_posts_only=False)
+add_bulk_blog_posts(new_posts_only=True)
 # For future use: add_bulk_blog_posts(new_posts_only=True)
 
 
