@@ -6,7 +6,7 @@
 
 import React, { useEffect } from 'react'; // useEffect for GA tracking
 import { useLocation } from 'react-router-dom'; // useLocation from React Router
-import ReactGA from 'react-ga';
+import ReactGA from 'react-ga4'; // GA4 library
 import AppContent from './components/AppContent';
 import useAuth from './hooks/useAuth'; // Custom hook for authentication logic
 import './index.css';
@@ -17,8 +17,8 @@ ReactGA.initialize('G-HPXWLCNQ6K');
 
 function App() {
   // 2) Use the useAuth hook to manage authentication state and functions
-  //    This replaces local useState for account/subscription, etc.
-  //    We pass setSubscription and setAccount to AppContent as needed.
+  // This replaces local useState for account/subscription, etc.
+  // We pass setSubscription and setAccount to AppContent as needed.
   const {
     account,
     setAccount,
@@ -36,7 +36,11 @@ function App() {
 
   // 4) Fire pageview each time the location changes
   useEffect(() => {
-    ReactGA.pageview(location.pathname + location.search);
+    // Using GA4's .send() instead of .pageview()
+    ReactGA.send({
+      hitType: 'pageview',
+      page: location.pathname + location.search,
+    });
   }, [location]);
 
   // 5) If user auth is still loading, show spinner

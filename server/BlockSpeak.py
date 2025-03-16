@@ -410,13 +410,23 @@ def get_blog_posts():
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
 
-        # Fetch paginated posts
+        # Fetch paginated posts with category and tags
         offset = (page - 1) * per_page
         c.execute(
-            "SELECT title, slug, isFree, teaser FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT title, slug, isFree, teaser, category, tags FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (per_page, offset)
         )
-        posts = [{"title": row[0], "slug": row[1], "isFree": bool(row[2]), "teaser": row[3]} for row in c.fetchall()]
+        posts = [
+            {
+                "title": row[0],
+                "slug": row[1],
+                "isFree": bool(row[2]),
+                "teaser": row[3],
+                "category": row[4],
+                "tags": row[5].split(",") if row[5] else []  # Convert comma-separated string to list
+            }
+            for row in c.fetchall()
+        ]
 
         # Get total number of posts
         c.execute("SELECT COUNT(*) FROM blog_posts")
@@ -816,34 +826,69 @@ def get_proposals():
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
 
-'''
-def add_bulk_blog_posts():
+def add_bulk_blog_posts(new_posts_only=False):
+    """Add 50 blog posts to the database with SEO-friendly slugs, categories, and tags.
+    If new_posts_only is True, appends only new posts without replacing existing ones."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM blog_posts")
-    if c.fetchone()[0] >= 50:  # Skip if already populated
-        conn.close()
-        return
-    posts = [
-        ("Bitcoin Halving 2024 Explained", "bitcoin halving 2024", 1, "What is the next halving?", "Details on Bitcoins 2024 halving...", "Crypto", "bitcoin,halving"),
-        ("Ethereums Merge: One Year Later", "eth merge year later", 1, "How did it change ETH?", "A review of Ethereums PoS shift...", "Crypto", "ethereum,merge"),
-        ("Web3 Gaming Revolution", "web3-gaming", 1, "Gaming on blockchain?", "Exploring Web3 gaming trends...", "Web3", "gaming,web3"),
-        ("LLMs in Crypto Trading", "llm-crypto-trading", 0, "AI meets trading...", "How LLMs enhance trading bots...", "Tech,LLM", "ai,trading"),
-        # Add 46 more...
-    ] + [
-        (f"Crypto News Update {i}", f"crypto-news-{i}", 1, f"Update #{i} on crypto...", f"Content for update #{i}...", "Crypto", "news")
-        for i in range(4, 50)
-    ]
-    c.executemany(
-        "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        posts
-    )
-    conn.commit()
-    conn.close()
-    app.logger.info("Added 50 blog posts to the database.")
+    try:
+        c.execute("SELECT COUNT(*) FROM blog_posts")
+        current_count = c.fetchone()[0]
+        if new_posts_only and current_count >= 50:
+            app.logger.info("Database contains 50+ posts, appending new posts only.")
+        elif not new_posts_only and current_count >= 50:
+            app.logger.info("Clearing existing posts to replace with new 50.")
+            c.execute("DELETE FROM blog_posts")
+            current_count = 0
 
-add_bulk_blog_posts()  # Run once, then comment out
-'''
+        def create_slug(title):
+            """Convert title to SEO-friendly slug: lowercase, hyphens, no special chars."""
+            return re.sub(r'[^a-z0-9-]+', '-', title.lower().replace(' ', '-')).strip('-')
+
+        posts = [
+            ("Bitcoin Halving 2024 Explained", create_slug("Bitcoin Halving 2024 Explained"), 1,
+             "Whats the next Bitcoin halving in 2024?",
+             "Bitcoins 2024 halving will reduce mining rewards, impacting price. Learn the details...",
+             "Crypto", "bitcoin,halving,crypto"),
+            ("Ethereums Merge: One Year Later", create_slug("Ethereums Merge: One Year Later"), 1,
+             "How has Ethereum changed post-Merge?",
+             "A year after the Merge, Ethereums shift to PoS has reshaped its ecosystem...",
+             "Crypto", "ethereum,merge,proof-of-stake"),
+            ("Web3 Gaming Revolution", create_slug("Web3 Gaming Revolution"), 1,
+             "Is gaming the future of Web3?",
+             "Web3 gaming introduces ownership with NFTs. Discover the latest trends...",
+             "Web3", "gaming,web3,nft"),
+            ("LLMs in Crypto Trading", create_slug("LLMs in Crypto Trading"), 0,
+             "Can AI revolutionize crypto trading?",
+             "LLMs enhance crypto trading with predictive analytics. Dive into the tech...",
+             "Tech,LLM", "ai,trading,crypto"),
+        ] + [
+            (f"Crypto News Update {i}", create_slug(f"Crypto News Update {i}"), 1,
+             f"Get update #{i} on crypto!",
+             f"The {i}th update on cryptocurrency trends and market movements...",
+             "Crypto", "news,crypto,market")
+            for i in range(4, 50)
+        ]
+
+        c.executemany(
+            "INSERT INTO blog_posts (title, slug, isFree, teaser, content, category, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            posts
+        )
+        conn.commit()
+        app.logger.info(f"Successfully added {len(posts)} blog posts. Total posts: {current_count + len(posts)}")
+    except sqlite3.IntegrityError as e:
+        app.logger.error(f"Duplicate slug error: {e}")
+        conn.rollback()
+    except Exception as e:
+        app.logger.error(f"Error adding blog posts: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+# Run with new_posts_only=False to replace, then comment out
+add_bulk_blog_posts(new_posts_only=False)
+# For future use: add_bulk_blog_posts(new_posts_only=True)
 
 
 @app.route("/api/analytics/<address>")

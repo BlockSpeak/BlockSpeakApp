@@ -14,13 +14,11 @@ axios.defaults.withCredentials = true;
 // Render your root
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
-    <HelmetProvider> {/* Wrap everything with HelmetProvider */}
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </HelmetProvider>
-  </React.StrictMode>,
+  <HelmetProvider> {/* Wrap everything with HelmetProvider */}
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </HelmetProvider>,
 );
 
 reportWebVitals();

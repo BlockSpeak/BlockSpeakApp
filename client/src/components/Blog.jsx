@@ -5,7 +5,7 @@ import axios from 'axios';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import useAuth from '../hooks/useAuth';
 
-// Empty line added for ESLint
+// Empty line for ESLint spacing rule
 
 function Blog() {
   const { account } = useAuth();
@@ -13,7 +13,7 @@ function Blog() {
   const [posts, setPosts] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const isLoadingRef = useRef(false); // Using ref instead of state for isLoading
+  const isLoadingRef = useRef(false);
 
   const fetchPosts = useCallback(() => {
     if (isLoadingRef.current || !hasMore) return; // Prevent redundant fetches
@@ -31,7 +31,7 @@ function Blog() {
       .finally(() => {
         isLoadingRef.current = false;
       });
-  }, [page, hasMore]); // Removed isLoading from dependencies
+  }, [page, hasMore]);
 
   useEffect(() => {
     fetchPosts();
@@ -63,12 +63,31 @@ function Blog() {
 
   return (
     <>
+      {/* SEO: General meta tags for the blog list page */}
       <Helmet>
         <title>BlockSpeak - Blockchain Blog</title>
         <meta
           name="description"
-          content="Explore blockchain, smart contracts, and crypto insights with BlockSpeak’s blog."
+          content="Explore the latest posts on Crypto, Web3, Tech, and more at BlockSpeak."
         />
+        <meta name="keywords" content="blockchain, crypto, Web3, tech, LLM, smart contracts" />
+        {/* Structured Data: Blog List Schema */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Blog',
+            name: 'BlockSpeak Blockchain Blog',
+            description: 'A blog exploring topics in Crypto, Web3, Tech, and more.',
+            publisher: {
+              '@type': 'Organization',
+              name: 'BlockSpeak',
+              logo: {
+                '@type': 'ImageObject',
+                url: 'https://blockspeak.co/blockspeakvert.svg',
+              },
+            },
+          })}
+        </script>
       </Helmet>
       <div className="bg-dark text-white min-h-screen p-4">
         <h1 className="text-4xl font-bold text-primary mb-8 text-center">Blockchain Blog</h1>
