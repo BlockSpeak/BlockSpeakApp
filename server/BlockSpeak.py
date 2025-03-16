@@ -23,6 +23,7 @@ from flask import request  # Grabs data from frontend requests
 from flask import session  # Stores temporary data like nonces
 from flask import jsonify  # Makes JSON responses for React
 from flask import redirect  # HTTP redirect for non-API requests to frontend
+from flask import send_from_directory  # Serve static files like images
 from web3 import Web3 as Web3Py  # Blockchain interaction to connect to Hardhat or Mainnet
 from openai import OpenAI  # ChatGPT integration for answering crypto questions
 from datetime import datetime  # Time handling for caching data
@@ -113,8 +114,10 @@ login_manager.init_app(app)
 
 # Database setup: Simple SQLite for users and blog posts
 def init_db():
-    """Creates the users and blog_posts tables if they don't exist."""
-    conn = sqlite3.connect("users.db")
+    # Creates the users and blog_posts tables if they dont exist
+    # Stores user email, password, subscription, Stripe ID, and query history
+    # NEW: Also stores blog posts for dynamic content
+    conn = sqlite3.connect("users.db")  # Connects to users.db file
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +126,7 @@ def init_db():
         subscription TEXT DEFAULT 'free',
         stripe_customer_id TEXT,
         history TEXT DEFAULT '[]')''')
+    # NEW: Create blog_posts table with additional fields for category, tags, and image
     c.execute('''CREATE TABLE IF NOT EXISTS blog_posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -134,11 +138,10 @@ def init_db():
         category TEXT DEFAULT 'General',
         tags TEXT DEFAULT '',
         image TEXT DEFAULT 'blockspeakvert.svg')''')
-    conn.commit()
-    conn.close()
+    conn.commit()  # Saves changes
+    conn.close()  # Closes connection
 
 init_db()  # Runs the setup right away
-
 
 # NEW: Seed the blog posts table with sample data (optional)
 def seed_blog_posts():
@@ -255,7 +258,7 @@ def get_trending_crypto():
 def get_x_profiles():
     # Returns static list of crypto X profiles
     # Used for the home page social links
-    return [{"name": "Bitcoin", "link": "https://x.com/Bitcoin"}, {"name": "Ethereum", "link": "https://x.com/ethereum"}, {"name": "Solana", "link": "https://x.com/Solana"}]
+    return [{"name": "Bitcoin", "link": "https://x.com/Bitcoin"}, {"name": "Ethereum", "link": "https://x.com/ethereum"}, {"name": "Solana", "link": "https://x.com/Solana"}] #preserving comment
 
 def get_news_items():
     # Fetches latest crypto news from RSS feeds
@@ -363,7 +366,7 @@ def get_top_coins():
         if other_coins:
             random_coin = other_coins[0]
             coins.append({"id": random_coin["id"], "name": random_coin["name"], "image": f"https://assets.coincap.io/assets/icons/{random_coin['symbol'].lower()}@2x.png",
-                          "price": f"{float(random_coin['priceUsd']):.2f}", "market_cap": f"{int(float(random_coin['marketCapUsd'])):,}",
+                          "price": f"{float(random_coin['priceUsd']):.2f}", "market_cap": f"{int(float(coin_data['marketCapUsd'])):,}",
                           "change": round(float(random_coin["changePercent24Hr"]), 2), "graph_color": "#2ecc71" if float(random_coin["changePercent24Hr"]) > 0 else "#e74c3c"})
         with open(cache_file, "w") as f:
             json.dump({"data": coins, "timestamp": now.isoformat()}, f)  # Caches new data
@@ -423,7 +426,7 @@ def get_blog_posts():
         # Fetch paginated posts with category and tags
         offset = (page - 1) * per_page
         c.execute(
-            "SELECT title, slug, isFree, teaser, category, tags FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT title, slug, isFree, teaser, category, tags, image FROM blog_posts ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (per_page, offset)
         )
         posts = [
@@ -433,7 +436,8 @@ def get_blog_posts():
                 "isFree": bool(row[2]),
                 "teaser": row[3],
                 "category": row[4],
-                "tags": row[5].split(",") if row[5] else []  # Convert comma-separated string to list
+                "tags": row[5].split(",") if row[5] else [],  # Convert comma-separated string to list
+                "image": row[6]  # Include image field
             }
             for row in c.fetchall()
         ]
@@ -459,19 +463,25 @@ def get_blog_posts():
         app.logger.error(f"Error in get_blog_posts: {str(e)}")
         return jsonify({"error": "Internal server error"}), 500
 
-
 @app.route("/api/blog-posts/<slug>", methods=["GET"])
 def get_blog_post(slug):
     """API endpoint to fetch a single blog post by slug."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT title, content FROM blog_posts WHERE slug = ?", (slug,))
+    c.execute("SELECT title, content, teaser, created_at, category, tags, image FROM blog_posts WHERE slug = ?", (slug,))
     post = c.fetchone()
     conn.close()
     if post:
-        return jsonify({"title": post[0], "content": post[1]})
+        return jsonify({
+            "title": post[0],
+            "content": post[1],
+            "teaser": post[2],
+            "created_at": post[3],
+            "category": post[4],
+            "tags": post[5].split(",") if post[5] else [],
+            "image": post[6]
+        })
     return jsonify({"title": "Not Found", "content": "Post not found."}), 404
-
 
 # API Routes: Where the magic happens!
 @app.route("/nonce")
@@ -482,7 +492,6 @@ def get_nonce():
     session["nonce"] = nonce  # Stores it in the session
     app.logger.info(f"Generated nonce: {nonce}")
     return nonce  # Sends it to the frontend
-
 
 @app.route("/api/register", methods=["POST"])
 def register():
@@ -513,7 +522,6 @@ def register():
     finally:
         conn.close()
 
-
 @app.route("/api/login", methods=["POST"])
 def login():
     # Logs in a user with email and password
@@ -531,7 +539,6 @@ def login():
         return jsonify({"success": True, "message": "Logged in!", "email": email})
     return jsonify({"error": "Wrong credentials"}), 400  # Bad email or password
 
-
 @app.route("/api/logout")
 @login_required
 def logout():
@@ -539,7 +546,6 @@ def logout():
     # Ends the session
     logout_user()
     return jsonify({"success": True, "message": "Logged out!"})
-
 
 @app.route("/login/metamask", methods=["POST"])
 def login_metamask():
@@ -573,7 +579,6 @@ def login_metamask():
         return jsonify({"error": "Invalid signature"}), 401  # Signature doesnt match
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
-
 
 @app.route("/api/create_contract", methods=["POST"])
 @login_required
@@ -614,7 +619,6 @@ def create_contract():
         except Exception as e:
             return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
     return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"})
-
 
 @app.route("/api/create_dao", methods=["POST"])
 @login_required
@@ -671,7 +675,6 @@ def create_dao():
         app.logger.error(f"DAO creation failed: {str(e)}")
         return jsonify({"error": f"DAO creation failed: {str(e)}"}), 500
 
-
 @app.route("/api/join_dao", methods=["POST"])
 @login_required
 def join_dao():
@@ -720,7 +723,6 @@ def join_dao():
         app.logger.error(f"Join DAO failed: {str(e)}")
         return jsonify({"error": f"Sorry, joining the DAO did not work: {str(e)}"}), 500
 
-
 @app.route("/api/create_proposal", methods=["POST"])
 @login_required
 def create_proposal():
@@ -759,7 +761,6 @@ def create_proposal():
     except Exception as e:
         app.logger.error(f"Create proposal failed: {str(e)}")
         return jsonify({"error": f"Failed to create proposal: {str(e)}"}), 500
-
 
 @app.route("/api/vote", methods=["POST"])
 @login_required
@@ -922,7 +923,31 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
             ("LLMs in Crypto Trading", "Tech,LLM", "ai,trading,crypto"),
             ("Daily Crypto Market Update", "Crypto", "crypto,market,news"),
         ]
-        all_topics = base_topics[:num_posts]  # Use only the first 5 topics
+        # Ensure unique titles for scaling
+        additional_topics = [
+            f"Daily Crypto Market Analysis {datetime.now().strftime('%Y-%m-%d')}",
+            f"Top Web3 Innovations to Watch Today",
+            f"Blockchain in Supply Chain: Daily Insights",
+            f"AI-Powered Crypto Trends You Need Now",
+            f"DeFi Explained: Todays Deep Dive",
+            f"Bitcoin vs Ethereum: Daily Showdown",
+            f"NFT Art Market Update Today",
+            f"Smart Contracts: Daily Expert Tips",
+            f"Crypto Regulation News Flash",
+            f"Web3 Social Media Trends Today",
+        ]
+        topics_cycle = []
+        for idx in range(num_posts - len(base_topics)):
+            topic = additional_topics[idx % len(additional_topics)]
+            count = idx // len(additional_topics)
+            if count > 0:
+                topic = f"{topic} (Update {count})"
+            topics_cycle.append(topic)
+        all_topics = base_topics + [
+            (topics_cycle[i], "Crypto" if "Crypto" in topics_cycle[i] else "Web3" if "Web3" in topics_cycle[i] else "Tech",
+             "crypto,market" if "Crypto" in topics_cycle[i] else "web3,nft" if "Web3" in topics_cycle[i] else "ai,tech")
+            for i in range(len(topics_cycle))
+        ]
 
         posts = []
         for i, (title, category, tags) in enumerate(all_topics):
@@ -955,8 +980,9 @@ def add_bulk_blog_posts(new_posts_only=False, num_posts=5):
         conn.rollback()
     finally:
         conn.close()
+
 # Run with new_posts_only=False to replace existing posts, then comment out
-# add_bulk_blog_posts(new_posts_only=False)
+# add_bulk_blog_posts(new_posts_only=True)
 # For future use: add_bulk_blog_posts(new_posts_only=True)
 
 @app.route("/api/analytics/<address>")
@@ -967,13 +993,11 @@ def get_analytics(address):
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
 
-
 @app.route("/api/news")
 def get_news_api():
     # Returns latest crypto news
     # Simple endpoint for the news section
     return jsonify(get_news_items())
-
 
 @app.route("/api/query", methods=["POST"])
 @login_required
@@ -1005,7 +1029,6 @@ def query():
     current_user.history = history[:3]
     return jsonify({"answer": answer, "question": user_question, "history": history[:3]})
 
-
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
@@ -1030,12 +1053,10 @@ def subscribe():
         app.logger.error(f"Stripe error: {str(e)}")
         return jsonify({"error": "Subscription failed"}), 500
 
-
 @app.route("/api/get_payment_address", methods=["GET"])
 def get_payment_address():
     """Return the ETH payment address for subscriptions."""
     return jsonify({"eth_payment_address": ETH_PAYMENT_ADDRESS}), 200
-
 
 @app.route("/api/subscription_status", methods=["GET"])
 @login_required
@@ -1054,7 +1075,6 @@ def subscription_status():
     except Exception as e:
         app.logger.error(f"Error fetching subscription status for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to fetch subscription status"}), 500
-
 
 @app.route("/api/subscribe_eth", methods=["POST"])
 @login_required
@@ -1111,7 +1131,6 @@ def subscribe_eth():
             error_details["possible_causes"].append("Unexpected error, check logs for stack trace")
         return jsonify(error_details), 500
 
-
 @app.route("/api/subscription_success")
 @login_required
 def subscription_success():
@@ -1128,7 +1147,6 @@ def subscription_success():
             conn.close()
             return jsonify({"success": True, "message": "Subscription confirmed"})
     return jsonify({"error": "Subscription not confirmed"}), 500
-
 
 @app.route("/api/")
 def home_api():
@@ -1147,7 +1165,6 @@ def coin_graph(coin_id):
     # Returns 7-day price graph data for a coin
     # Used for the dashboard graph
     return jsonify(get_coin_graph(coin_id))
-
 
 @app.route("/api/update_account", methods=["POST"])
 @login_required
@@ -1172,7 +1189,6 @@ def update_account():
         app.logger.error(f"Update account failed for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to update account"}), 500
 
-
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
@@ -1182,7 +1198,6 @@ def catch_all(path):
         return app.handle_url_build_error(None, path, None)
     return redirect("https://blockspeak.co", code=302)
 
-
 @app.before_request
 def start_session():
     # Ensures a session exists for each request
@@ -1190,16 +1205,14 @@ def start_session():
     if "nonce" not in session:
         session["nonce"] = None
 
-
 # Serve static images
 @app.route("/images/<filename>")
 def serve_image(filename):
     return send_from_directory("static/images", filename)
-
 
 if __name__ == "__main__":
     import sys
     if "--cron" in sys.argv:
         add_bulk_blog_posts(new_posts_only=True, num_posts=5)
     else:
-        app.run(host="0.0.0.0", port=8080, debug=True)
+        app.run(host="0.0.0.0", port=8080, debug=False)

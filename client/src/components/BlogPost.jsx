@@ -9,6 +9,7 @@ import { DiscussionEmbed } from 'disqus-react';
 function BlogPost() {
   const { slug } = useParams();
   const [post, setPost] = useState(null);
+  const [imageError, setImageError] = useState(null);
 
   // Fetch post data from backend on mount and when slug changes
   useEffect(() => {
@@ -20,6 +21,12 @@ function BlogPost() {
 
   // Show loading state while fetching
   if (!post) return <div className="bg-dark text-white min-h-screen p-4">Loading...</div>;
+
+  // Use the same base URL for images as the API
+  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
+  const imageSrc = post.image && post.image !== 'blockspeakvert.svg'
+    ? `${baseUrl}/images/${post.image}`
+    : '/blockspeakvert.svg';
 
   return (
     <div className="bg-dark text-white min-h-screen p-4">
@@ -38,16 +45,26 @@ function BlogPost() {
             '@type': 'BlogPosting',
             headline: post.title,
             description: post.teaser || 'A blog post on blockchain and crypto topics.',
-            author: {
-              '@type': 'Organization',
-              name: 'BlockSpeak',
-            },
+            author: { '@type': 'Organization', name: 'BlockSpeak' },
             datePublished: post.created_at || new Date().toISOString(),
             keywords: post.tags ? post.tags.join(', ') : 'blockchain, crypto',
+            image: imageSrc
           })}
         </script>
       </Helmet>
       <h1 className="text-4xl font-bold text-primary mb-4">{post.title}</h1>
+      {post.image && (
+        <>
+          <img
+            src={imageSrc}
+            alt={post.title}
+            className="w-full h-auto mb-4 rounded-lg"
+            loading="lazy"
+            onError={(e) => setImageError(`Failed to load image: ${e.target.src}`)}
+          />
+          {imageError && <p className="text-red-400">{imageError}</p>}
+        </>
+      )}
       <p className="text-accent max-w-2xl mx-auto mb-8">{post.content}</p>
       {/* Disqus comments section */}
       <div className="max-w-2xl mx-auto">

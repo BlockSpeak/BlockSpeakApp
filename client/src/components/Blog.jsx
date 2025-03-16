@@ -61,6 +61,8 @@ function Blog() {
     return <p>Premium content unlocking soon...</p>;
   };
 
+  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
+
   return (
     <>
       {/* SEO: General meta tags for the blog list page */}
@@ -99,21 +101,34 @@ function Blog() {
           endMessage={<p className="text-center text-accent">No more posts to load.</p>}
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {posts.map((post) => (
-              <div key={post.slug} className="bg-gray-800 p-4 rounded-lg shadow-md">
-                <h2 className="text-2xl font-semibold text-primary">{post.title}</h2>
-                <p className="text-gray-400 text-sm">{post.category || 'Uncategorized'}</p>
-                <p className="text-accent">{post.teaser}</p>
-                {post.tags && post.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {post.tags.map((tag) => (
-                      <span key={tag} className="text-xs bg-purple-600 text-white px-2 py-1 rounded">{tag}</span>
-                    ))}
-                  </div>
-                )}
-                {renderPostLink(post)}
-              </div>
-            ))}
+            {posts.map((post) => {
+              const imageSrc = post.image && post.image !== 'blockspeakvert.svg'
+                ? `${baseUrl}/images/${post.image}`
+                : '/blockspeakvert.svg';
+              return (
+                <div key={post.slug} className="bg-gray-800 p-4 rounded-lg shadow-md">
+                  <h2 className="text-2xl font-semibold text-primary">{post.title}</h2>
+                  {post.image && (
+                    <img
+                      src={imageSrc}
+                      alt={post.title}
+                      className="w-full h-auto mb-4 rounded-lg"
+                      loading="lazy"
+                    />
+                  )}
+                  <p className="text-gray-400 text-sm">{post.category || 'Uncategorized'}</p>
+                  <p className="text-accent">{post.teaser}</p>
+                  {post.tags && post.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {post.tags.map((tag) => (
+                        <span key={tag} className="text-xs bg-purple-600 text-white px-2 py-1 rounded">{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                  {renderPostLink(post)}
+                </div>
+              );
+            })}
           </div>
         </InfiniteScroll>
         <div className="mt-4 text-center">
