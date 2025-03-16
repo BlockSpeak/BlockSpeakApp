@@ -843,7 +843,7 @@ def get_proposals():
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
 
-def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
+def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
     """Add blog posts to the database with AI-generated, SEO-friendly content.
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
@@ -924,10 +924,12 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
             content_prompt = (
                 f"Write a {500 if not is_premium else 1000}-word blog post on '{title}'. "
                 f"Structure the post with:\n"
-                f"- An H1 heading (the title itself)\n"
-                f"- At least 2 H2 subheadings\n"
-                f"- At least 3 H3 sub-subheadings under the H2s\n"
+                f"- An H1 heading (the title itself) using <h1> tags, e.g., <h1>{title}</h1>\n"
+                f"- At least 2 H2 subheadings using <h2> tags, e.g., <h2>Subheading</h2>\n"
+                f"- At least 3 H3 sub-subheadings under the H2s using <h3> tags, e.g., <h3>Sub-subheading</h3>\n"
                 f"- Include a placeholder for an inline image halfway through with the text '[Inline Image Placeholder]'\n"
+                f"- Do NOT use markdown syntax like ### for headings; use HTML tags instead.\n"
+                f"- Ensure paragraphs are wrapped in <p> tags, e.g., <p>Paragraph text</p>.\n"
                 f"Include a {150 if not is_premium else 300}-character teaser description and 5 SEO keywords. "
                 f"Ensure the content is engaging, informative, and encourages daily visits or subscriptions "
                 f"{'for premium insights' if is_premium else ''}. Format as:\n"
@@ -937,6 +939,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
                 model="gpt-4",
                 messages=[{"role": "user", "content": content_prompt}],
                 max_tokens=700 if not is_premium else 1200
+                temperature=0.7,  # NEW: Reduce randomness for more professional tone
+                frequency_penalty=0.5,  # NEW: Discourage repetition
+                presence_penalty=0.5  # NEW: Encourage new ideas
             )
             content = response.choices[0].message.content
             sections = content.split("\nTeaser:\n")
@@ -951,7 +956,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
             # Fetch two images: one for the header, one for inline
             header_image = fetch_image_url(keywords[0])
             inline_image = fetch_image_url(keywords[1]) if '[Inline Image Placeholder]' in post_content else None
-            # Store inline image in content metadata (we'll handle rendering in frontend)
+            # Store inline image in content metadata (well handle rendering in frontend)
             post_content = post_content.replace('[Inline Image Placeholder]', f'[InlineImage:{inline_image}]' if inline_image else '')
             return post_content, teaser, ",".join(keywords), header_image, inline_image
 
@@ -986,9 +991,8 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
             subject = random.choice(subjects[category])
             prefix = random.choice(prefixes)
             suffix = random.choice(suffixes)
-            # Add timestamp to ensure title uniqueness
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            title = f"{prefix} {subject} {suffix} {timestamp}"
+            # Add title for article 
+            title = f"{prefix} {subject} {suffix}"
             # Dynamically generate tags
             base_tags = ["blockchain", "crypto", "web3", "nft", "ai", "trading", "market", "defi", "security", "technology"]
             relevant_tags = [tag for tag in base_tags if tag in subject.lower() or tag in category.lower()]
@@ -1042,8 +1046,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=5):
         conn.close()
 
 # Run with new_posts_only=False to replace existing posts, then comment out
-add_bulk_blog_posts(new_posts_only=True)
-# For future use: add_bulk_blog_posts(new_posts_only=True)
+# add_bulk_blog_posts(new_posts_only=True) run this when you want to make blogs manually for testing
 
 
 @app.route("/api/analytics/<address>")
@@ -1274,6 +1277,6 @@ def serve_image(filename):
 if __name__ == "__main__":
     import sys
     if "--cron" in sys.argv:
-        add_bulk_blog_posts(new_posts_only=True, num_posts=5)
+        add_bulk_blog_posts(new_posts_only=True, num_posts=1)
     else:
         app.run(host="0.0.0.0", port=8080, debug=False)
