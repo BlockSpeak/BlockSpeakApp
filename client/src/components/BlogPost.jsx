@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import axios from 'axios';
 import { DiscussionEmbed } from 'disqus-react';
+import sanitizeHtml from 'sanitize-html';
 
 // Empty line for ESLint spacing rule
 
@@ -24,9 +25,36 @@ function BlogPost() {
 
   // Use the same base URL for images as the API
   const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
-  const imageSrc = post.image && post.image !== 'blockspeakvert.svg'
+  const headerImageSrc = post.image && post.image !== 'blockspeakvert.svg'
     ? `${baseUrl}/images/${post.image}`
     : '/blockspeakvert.svg';
+  // NEW: Construct URL for inline image if it exists
+  const inlineImageSrc = post.inline_image && post.inline_image !== 'blockspeakvert.svg'
+    ? `${baseUrl}/images/${post.inline_image}`
+    : null;
+
+  // NEW: Parse content for inline images and sanitize HTML, bolding H2s
+  let contentParts = post.content.split('[InlineImage:');
+  if (contentParts.length > 1) {
+    contentParts = contentParts.map((part, index) => {
+      if (index === 0) return part;
+      const endIndex = part.indexOf(']');
+      const imageName = part.substring(0, endIndex);
+      const rest = part.substring(endIndex + 1);
+      return {
+        image: imageName,
+        text: sanitizeHtml(rest, {
+          allowedTags: ['h1', 'h2', 'h3', 'p', 'br', 'strong', 'b'], // Allow bold tags
+          allowedAttributes: {},
+        }),
+      };
+    });
+  } else {
+    contentParts = [sanitizeHtml(post.content, {
+      allowedTags: ['h1', 'h2', 'h3', 'p', 'br', 'strong', 'b'], // Allow bold tags
+      allowedAttributes: {},
+    })];
+  }
 
   return (
     <div className="bg-dark text-white min-h-screen p-4">
@@ -48,25 +76,45 @@ function BlogPost() {
             author: { '@type': 'Organization', name: 'BlockSpeak' },
             datePublished: post.created_at || new Date().toISOString(),
             keywords: post.tags ? post.tags.join(', ') : 'blockchain, crypto',
-            image: imageSrc,
-          })}
+            image: headerImageSrc,
+          }, null, 2)}
         </script>
       </Helmet>
-      <h1 className="text-4xl font-bold text-primary mb-4">{post.title}</h1>
-      {post.image && (
-        <>
+      <div className="flex flex-col items-center">
+        {post.image && (
           <img
-            src={imageSrc}
+            src={headerImageSrc}
             alt={post.title}
-            className="w-full h-auto mb-4 rounded-lg"
+            className="w-1/2 h-auto mb-4 rounded-lg"
             loading="lazy"
             onError={(e) => setImageError(`Failed to load image: ${e.target.src}`)}
           />
-          {imageError && <p className="text-red-400">{imageError}</p>}
-        </>
-      )}
-      <p className="text-accent max-w-2xl mx-auto mb-8">{post.content}</p>
-      {/* Disqus comments section */}
+        )}
+        {imageError && <p className="text-red-400">{imageError}</p>}
+        <h1 className="text-4xl font-bold text-primary mb-6 text-center">{post.title}</h1>
+      </div>
+      <div className="text-accent max-w-2xl mx-auto mb-8 prose prose-invert">
+        {contentParts.map((part, index) => (
+          <div key={index}>
+            {typeof part === 'string' ? (
+              <div dangerouslySetInnerHTML={{ __html: part }} />
+            ) : (
+              <>
+                {inlineImageSrc && (
+                  <img
+                    src={inlineImageSrc}
+                    alt="Inline content"
+                    className="w-full h-auto my-4 rounded-lg"
+                    loading="lazy"
+                    onError={(e) => setImageError(`Failed to load inline image: ${e.target.src}`)}
+                  />
+                )}
+                <div dangerouslySetInnerHTML={{ __html: part.text }} />
+              </>
+            )}
+          </div>
+        ))}
+      </div>
       <div className="max-w-2xl mx-auto">
         <DiscussionEmbed
           shortname="blockspeak"

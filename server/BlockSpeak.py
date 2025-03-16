@@ -843,7 +843,7 @@ def get_proposals():
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
 
 
-def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
+def add_bulk_blog_posts(new_posts_only=True, num_posts=3):
     """Add blog posts to the database with AI-generated, SEO-friendly content.
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
@@ -1277,6 +1277,6 @@ def serve_image(filename):
 if __name__ == "__main__":
     import sys
     if "--cron" in sys.argv:
-        add_bulk_blog_posts(new_posts_only=True, num_posts=1)
+        add_bulk_blog_posts(new_posts_only=True, num_posts=3)
     else:
         app.run(host="0.0.0.0", port=8080, debug=False)
