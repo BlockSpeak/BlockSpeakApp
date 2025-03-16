@@ -938,7 +938,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
             response = client.chat.completions.create(
                 model="gpt-4",
                 messages=[{"role": "user", "content": content_prompt}],
-                max_tokens=700 if not is_premium else 1200
+                max_tokens=700 if not is_premium else 1200,
                 temperature=0.7,  # NEW: Reduce randomness for more professional tone
                 frequency_penalty=0.5,  # NEW: Discourage repetition
                 presence_penalty=0.5  # NEW: Encourage new ideas
@@ -1045,8 +1045,8 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
     finally:
         conn.close()
 
-# Run with new_posts_only=False to replace existing posts, then comment out
-# add_bulk_blog_posts(new_posts_only=True) run this when you want to make blogs manually for testing
+# Run with new_posts_only=False to replace existing posts above, run this one below for testing then comment out after run.
+add_bulk_blog_posts(new_posts_only=True) 
 
 
 @app.route("/api/analytics/<address>")
