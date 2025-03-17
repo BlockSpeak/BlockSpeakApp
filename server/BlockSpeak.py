@@ -917,7 +917,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
         new_posts_only (bool): If True, appends posts; if False, replaces all posts.
-        num_posts (int): Number of posts to generate (default to 5 for daily automation).
+        num_posts (int): Number of posts to generate (default to 1 for daily automation).
     """
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -928,7 +928,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
             raise ValueError("OpenAI API key not set in environment variables.")
 
         # Check current post count
-        app.logger.info("Checking current post count in database")  # NEW: Added for visibility
+        app.logger.info("Checking current post count in database")  # Log for visibility
         c.execute("SELECT COUNT(*) FROM blog_posts")
         current_count = c.fetchone()[0]
         # If not appending (new_posts_only=False), clear the database and start fresh
@@ -938,7 +938,6 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
             c.execute("DELETE FROM blog_posts")
             current_count = 0
         # When new_posts_only=True, always add num_posts new posts daily
-        # Removed the condition `if current_count >= num_posts` to ensure daily addition
         app.logger.info(f"Database currently has {current_count} posts. Adding {num_posts} new posts.")
 
         def create_unique_slug(title, existing_slugs):
@@ -953,6 +952,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
 
         def fetch_image_url(keyword, retries=3, delay=5):
             """Fetch an image URL from Unsplash with retry logic for rate limits."""
+            app.logger.info(f"Fetching image for keyword: {keyword}")  # Log the start of the image fetch
             api_key = os.getenv("UNSPLASH_API_KEY")
             if not api_key:
                 app.logger.warning("Unsplash API key not set, using fallback image.")
@@ -963,8 +963,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                         f"https://api.unsplash.com/photos/random?query={keyword}&client_id={api_key}",
                         timeout=10
                     )
-                    response.raise_for_status()  # Raises HTTPError for 429 (rate limit)
+                    response.raise_for_status()  # Raises HTTPError for bad responses (e.g., 429)
                     data = response.json()
+                    app.logger.info(f"Unsplash response for keyword '{keyword}': {data}")  # Log the API response
                     image_url = data.get("urls", {}).get("regular", "blockspeakvert.svg")
                     if image_url != "blockspeakvert.svg":
                         image_name = f"{re.sub(r'[^a-z0-9-]+', '-', keyword.lower())}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
@@ -972,7 +973,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                         os.makedirs(os.path.dirname(image_path), exist_ok=True)
                         with open(image_path, "wb") as f:
                             f.write(requests.get(image_url).content)
+                        app.logger.info(f"Successfully fetched image for keyword '{keyword}': {image_name}")  # Log success
                         return image_name
+                    app.logger.warning(f"No valid image URL found for keyword '{keyword}', using fallback.")
                     return "blockspeakvert.svg"
                 except HTTPError as e:
                     if e.response.status_code == 429:  # Rate limit exceeded
@@ -983,8 +986,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                     app.logger.error(f"Failed to fetch image from Unsplash for keyword '{keyword}': {str(e)}")
                     return "blockspeakvert.svg"
                 except Exception as e:
-                    app.logger.error(f"Failed to fetch image from Unsplash for keyword '{keyword}': {str(e)}")
+                    app.logger.error(f"Unexpected error fetching image from Unsplash for keyword '{keyword}': {str(e)}")
                     return "blockspeakvert.svg"
+            app.logger.warning(f"All retries failed for keyword '{keyword}', using fallback image.")
             return "blockspeakvert.svg"
 
         def generate_post_content(title, category, tags, is_premium=False):
@@ -994,11 +998,12 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 f"Write a {500 if not is_premium else 1000}-word blog post on '{title}'. "
                 f"Structure the post with:\n"
                 f"- An H1 heading (the title itself) using <h1> tags, e.g., <h1>{title}</h1>\n"
-                f"- At least 2 H2 subheadings using <h2> tags, e.g., <h2>Subheading</h2>\n"
+                f"- At least 2 H2 subheadings using <h2> tags, e.g., <h2><strong>Subheading</strong></h2>\n"
                 f"- At least 3 H3 sub-subheadings under the H2s using <h3> tags, e.g., <h3>Sub-subheading</h3>\n"
                 f"- Include a placeholder for an inline image halfway through with the text '[Inline Image Placeholder]'\n"
                 f"- Do NOT use markdown syntax like ### for headings; use HTML tags instead.\n"
-                f"- Ensure paragraphs are wrapped in <p> tags, e.g., <p>Paragraph text</p>.\n"
+                f"- Ensure paragraphs are wrapped in <p> tags, e.g., <p>Paragraph text</p>\n"
+                f"- Bold key phrases or headings where appropriate using <strong> or <b> tags to add flair.\n"
                 f"Include a {150 if not is_premium else 300}-character teaser description and 5 SEO keywords. "
                 f"Ensure the content is engaging, informative, and encourages daily visits or subscriptions "
                 f"{'for premium insights' if is_premium else ''}. Format as:\n"
@@ -1008,9 +1013,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 model="gpt-4",
                 messages=[{"role": "user", "content": content_prompt}],
                 max_tokens=700 if not is_premium else 1200,
-                temperature=0.7,  # NEW: Reduce randomness for more professional tone
-                frequency_penalty=0.5,  # NEW: Discourage repetition
-                presence_penalty=0.5  # NEW: Encourage new ideas
+                temperature=0.7,  # Reduce randomness for a professional tone
+                frequency_penalty=0.5,  # Discourage repetition
+                presence_penalty=0.5  # Encourage new ideas
             )
             content = response.choices[0].message.content
             sections = content.split("\nTeaser:\n")
@@ -1025,8 +1030,10 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
             # Fetch two images: one for the header, one for inline
             header_image = fetch_image_url(keywords[0])
             inline_image = fetch_image_url(keywords[1]) if '[Inline Image Placeholder]' in post_content else None
-            # Store inline image in content metadata (well handle rendering in frontend)
-            post_content = post_content.replace('[Inline Image Placeholder]', f'[InlineImage:{inline_image}]' if inline_image else '')
+            app.logger.info(f"Generated header_image: {header_image}, inline_image: {inline_image} for title: {title}")  # Log image generation
+            # Replace placeholder with inline image and ensure correct filename
+            if '[Inline Image Placeholder]' in post_content and inline_image:
+                post_content = post_content.replace('[Inline Image Placeholder]', f'[InlineImage:{inline_image}]')
             return post_content, teaser, ",".join(keywords), header_image, inline_image
 
         # Fetch existing slugs to avoid duplicates
@@ -1060,7 +1067,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
             subject = random.choice(subjects[category])
             prefix = random.choice(prefixes)
             suffix = random.choice(suffixes)
-            # Add title for article 
+            # Add title for article
             title = f"{prefix} {subject} {suffix}"
             # Dynamically generate tags
             base_tags = ["blockchain", "crypto", "web3", "nft", "ai", "trading", "market", "defi", "security", "technology"]
@@ -1102,14 +1109,14 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
         )
         conn.commit()
         app.logger.info(f"Successfully added {len(posts)} unique blog posts with images. Total posts: {current_count + len(posts)}")
-        print(f"Successfully added {len(posts)} unique blog posts with images. Total posts: {current_count + len(posts)}")  # NEW: Explicit console output
+        print(f"Successfully added {len(posts)} unique blog posts with images. Total posts: {current_count + len(posts)}")
     except sqlite3.IntegrityError as e:
         app.logger.error(f"Duplicate slug error: {e}")
-        print(f"Failed to add blog posts: Duplicate slug error - {str(e)}")  # NEW: Explicit console output
+        print(f"Failed to add blog posts: Duplicate slug error - {str(e)}")
         conn.rollback()
     except Exception as e:
         app.logger.error(f"Error adding blog posts: {e}")
-        print(f"Failed to add blog posts: {str(e)}")  # NEW: Explicit console output
+        print(f"Failed to add blog posts: {str(e)}")
         conn.rollback()
     finally:
         conn.close()
