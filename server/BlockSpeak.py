@@ -1348,14 +1348,25 @@ def update_account():
         app.logger.error(f"Update account failed for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to update account"}), 500
 
+
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def catch_all(path):
-    # Redirects non-API requests to the frontend at https://blockspeak.co
-    # Keeps our backend API-only
+    """Serve the React frontend for all non-API routes, enabling client-side routing.
+    - In development (APP_ENV='development'), serves index.html from ../client/build.
+    - In production (APP_ENV='production'), redirects to https://blockspeak.co.
+    Note: Ensure the frontend Render service (blockspeak-client) handles all routes for production SPA behavior."""
     if path.startswith("api/") or path == "nonce" or path == "login/metamask":
         return app.handle_url_build_error(None, path, None)
-    return redirect("https://blockspeak.co", code=302)
+    # Serve the React build locally or redirect to production in deployment
+    if os.getenv("APP_ENV") == "development":
+        try:
+            return send_from_directory("../client/build", "index.html")
+        except FileNotFoundError:
+            return jsonify({"error": "Frontend build not found. Run 'npm run build' in the client directory."}), 500
+    else:
+        return redirect("https://blockspeak.co", code=302)
+
 
 @app.before_request
 def start_session():
