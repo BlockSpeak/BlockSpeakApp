@@ -148,10 +148,10 @@ function BlogPost() {
           <img
             src={headerImageSrc}
             alt={post.title}
-            className="w-1/2 h-auto mb-4 rounded-lg"
+            className="w-full max-w-3xl md:w-1/2 h-auto mb-4 rounded-lg object-cover"
             loading="lazy"
             onError={(e) => setImageError(`Failed to load image: ${e.target.src}`)}
-            style={{ minHeight: '200px' }} // Reserve space to prevent layout shift
+            style={{ minHeight: '200px' }}
           />
         )}
         {imageError && <p className="text-red-400">{imageError}</p>}
