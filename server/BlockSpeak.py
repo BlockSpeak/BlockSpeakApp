@@ -542,7 +542,7 @@ def get_blog_post(slug):
     """API endpoint to fetch a single blog post by slug."""
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT title, content, teaser, created_at, category, tags, image FROM blog_posts WHERE slug = ?", (slug,))
+    c.execute("SELECT title, content, teaser, created_at, category, tags, image, inline_image FROM blog_posts WHERE slug = ?", (slug,))
     post = c.fetchone()
     conn.close()
     if post:
@@ -553,7 +553,8 @@ def get_blog_post(slug):
             "created_at": post[3],
             "category": post[4],
             "tags": post[5].split(",") if post[5] else [],
-            "image": post[6]
+            "image": post[6],
+            "inline_image": post[7]  # Add inline_image to the response
         })
     return jsonify({"title": "Not Found", "content": "Post not found."}), 404
 
@@ -917,7 +918,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
     If new_posts_only is True, appends new posts without replacing existing ones.
     Args:
         new_posts_only (bool): If True, appends posts; if False, replaces all posts.
-        num_posts (int): Number of posts to generate (default to 1 for daily automation).
+        num_posts (int): Number of posts to generate (default to 1, max 5 for manual control).
     """
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -927,8 +928,12 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
         if not client:
             raise ValueError("OpenAI API key not set in environment variables.")
 
+        # Validate num_posts to ensure it stays between 1 and 5
+        num_posts = max(1, min(5, num_posts))  # Restrict to 1-5 posts
+        app.logger.info(f"Generating {num_posts} blog posts (limited to 1-5).")
+
         # Check current post count
-        app.logger.info("Checking current post count in database")  # Log for visibility
+        app.logger.info("Checking current post count in database")
         c.execute("SELECT COUNT(*) FROM blog_posts")
         current_count = c.fetchone()[0]
         # If not appending (new_posts_only=False), clear the database and start fresh
@@ -950,35 +955,47 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 counter += 1
             return slug
 
-        def fetch_image_url(keyword, retries=3, delay=5):
-            """Fetch an image URL from Unsplash with retry logic for rate limits."""
-            app.logger.info(f"Fetching image for keyword: {keyword}")  # Log the start of the image fetch
+        def fetch_image_url(keyword, is_inline=False, retries=3, delay=5):
+            """Fetch an image URL from Unsplash with retry logic for rate limits.
+            Args:
+                keyword (str): The keyword to search for.
+                is_inline (bool): If True, adds '_inline' suffix to the filename.
+                retries (int): Number of retries for rate-limited requests.
+                delay (int): Delay between retries in seconds.
+            """
+            app.logger.info(f"Fetching image for keyword: {keyword}, is_inline: {is_inline}")
             api_key = os.getenv("UNSPLASH_API_KEY")
             if not api_key:
                 app.logger.warning("Unsplash API key not set, using fallback image.")
                 return "blockspeakvert.svg"
+            # Clean the keyword to ensure a valid filename
+            cleaned_keyword = re.sub(r'[^a-z0-9]+', '-', keyword.lower()).strip('-')
+            app.logger.info(f"Cleaned keyword for filename: {cleaned_keyword}")
             for attempt in range(retries):
                 try:
                     response = requests.get(
                         f"https://api.unsplash.com/photos/random?query={keyword}&client_id={api_key}",
                         timeout=10
                     )
-                    response.raise_for_status()  # Raises HTTPError for bad responses (e.g., 429)
+                    response.raise_for_status()
                     data = response.json()
-                    app.logger.info(f"Unsplash response for keyword '{keyword}': {data}")  # Log the API response
+                    app.logger.info(f"Unsplash response for keyword '{keyword}': {data}")
                     image_url = data.get("urls", {}).get("regular", "blockspeakvert.svg")
                     if image_url != "blockspeakvert.svg":
-                        image_name = f"{re.sub(r'[^a-z0-9-]+', '-', keyword.lower())}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+                        suffix = "_inline" if is_inline else ""
+                        image_name = f"{cleaned_keyword}_{datetime.now().strftime('%Y%m%d%H%M%S')}{suffix}.jpg"
                         image_path = os.path.join("static/images", image_name)
                         os.makedirs(os.path.dirname(image_path), exist_ok=True)
+                        image_response = requests.get(image_url)
+                        image_response.raise_for_status()
                         with open(image_path, "wb") as f:
-                            f.write(requests.get(image_url).content)
-                        app.logger.info(f"Successfully fetched image for keyword '{keyword}': {image_name}")  # Log success
+                            f.write(image_response.content)
+                        app.logger.info(f"Successfully fetched image for keyword '{keyword}': {image_name}")
                         return image_name
                     app.logger.warning(f"No valid image URL found for keyword '{keyword}', using fallback.")
                     return "blockspeakvert.svg"
                 except HTTPError as e:
-                    if e.response.status_code == 429:  # Rate limit exceeded
+                    if e.response.status_code == 429:
                         app.logger.warning(f"Unsplash rate limit hit on attempt {attempt+1}/{retries}, retrying in {delay} seconds...")
                         if attempt < retries - 1:
                             time.sleep(delay)
@@ -1013,9 +1030,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 model="gpt-4",
                 messages=[{"role": "user", "content": content_prompt}],
                 max_tokens=700 if not is_premium else 1200,
-                temperature=0.7,  # Reduce randomness for a professional tone
-                frequency_penalty=0.5,  # Discourage repetition
-                presence_penalty=0.5  # Encourage new ideas
+                temperature=0.7,
+                frequency_penalty=0.5,
+                presence_penalty=0.5
             )
             content = response.choices[0].message.content
             sections = content.split("\nTeaser:\n")
@@ -1028,12 +1045,14 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 teaser = teaser_section[0][:150 if not is_premium else 300].strip()
                 keywords = teaser_section[1].split(",")[:5] if len(teaser_section) > 1 else tags.split(",")
             # Fetch two images: one for the header, one for inline
-            header_image = fetch_image_url(keywords[0])
-            inline_image = fetch_image_url(keywords[1]) if '[Inline Image Placeholder]' in post_content else None
-            app.logger.info(f"Generated header_image: {header_image}, inline_image: {inline_image} for title: {title}")  # Log image generation
+            header_image = fetch_image_url(keywords[0], is_inline=False)
+            inline_image = fetch_image_url(keywords[1], is_inline=True) if '[Inline Image Placeholder]' in post_content else "blockspeakvert.svg"
+            app.logger.info(f"Generated header_image: {header_image}, inline_image: {inline_image} for title: {title}")
             # Replace placeholder with inline image and ensure correct filename
-            if '[Inline Image Placeholder]' in post_content and inline_image:
+            if '[Inline Image Placeholder]' in post_content and inline_image and inline_image != "blockspeakvert.svg":
                 post_content = post_content.replace('[Inline Image Placeholder]', f'[InlineImage:{inline_image}]')
+            else:
+                post_content = post_content.replace('[Inline Image Placeholder]', '')  # Remove placeholder if no image
             return post_content, teaser, ",".join(keywords), header_image, inline_image
 
         # Fetch existing slugs to avoid duplicates
@@ -1091,7 +1110,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 keywords,
                 pub_date.strftime('%Y-%m-%d'),
                 header_image,
-                inline_image  # New field for inline image
+                inline_image
             ))
             print(f"Generating post {i+1}/{num_posts}: {title} (Premium: {is_premium})")
 
@@ -1122,7 +1141,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
         conn.close()
 
 # Run with new_posts_only=False to replace existing posts above, run this one below for testing then comment out after run.
-# add_bulk_blog_posts(new_posts_only=True) 
+add_bulk_blog_posts(new_posts_only=True) 
 
 
 @app.route("/api/analytics/<address>")
