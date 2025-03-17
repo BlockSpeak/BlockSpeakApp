@@ -14,17 +14,18 @@ function BlogPost() {
   const [disqusLoaded, setDisqusLoaded] = useState(false);
   const disqusRef = useRef(null);
 
-  // Fetch post data and handle Disqus reset
+  // Fetch post data and handle Disqus reset with loading state
   useEffect(() => {
     const baseUrl = process.env.NODE_ENV === 'development'
       ? 'http://127.0.0.1:8080'
       : 'https://blockspeak.onrender.com';
 
-    axios.get(`${baseUrl}/api/blog-posts/${slug}`)
-      .then((response) => {
+    const fetchData = async () => {
+      try {
+        const response = await axios.get(`${baseUrl}/api/blog-posts/${slug}`);
         setPost(response.data);
 
-        // Function to reset Disqus comments
+        // Function to reset Disqus comments with a placeholder
         const resetDisqus = () => {
           if (window.DISQUS && disqusRef.current) {
             console.log('Resetting Disqus for slug:', slug);
@@ -35,7 +36,7 @@ function BlogPost() {
                   page: {
                     url: window.location.href,
                     identifier: slug,
-                    title: response.data.title, // Use response.data.title since post isn’t updated yet
+                    title: response.data.title,
                   },
                 }),
               });
@@ -63,12 +64,23 @@ function BlogPost() {
           };
           checkDisqusLoaded();
         }
-      })
-      .catch((error) => console.error('Error fetching blog post:', error));
+      } catch (error) {
+        console.error('Error fetching blog post:', error);
+      }
+    };
+
+    fetchData();
+    window.scrollTo(0, 0); // Reset scroll to top on mount
   }, [slug, disqusLoaded]);
 
-  // Loading state
-  if (!post) return <div className="bg-dark text-white min-h-screen p-4">Loading...</div>;
+  // Loading state with placeholder
+  if (!post) {
+    return (
+      <div className="bg-dark text-white min-h-screen p-4 flex items-center justify-center">
+        <div className="animate-pulse text-accent">Loading blog post...</div>
+      </div>
+    );
+  }
 
   // Base URL for images
   const baseUrl = process.env.NODE_ENV === 'development'
@@ -80,6 +92,7 @@ function BlogPost() {
   const inlineImageSrc = post.inline_image && post.inline_image !== 'blockspeakvert.svg'
     ? `${baseUrl}/images/${post.inline_image}`
     : null;
+  console.log('Raw post.inline_image:', post.inline_image);
   console.log('inlineImageSrc:', inlineImageSrc);
 
   // Parse content for inline images and sanitize HTML
@@ -129,7 +142,7 @@ function BlogPost() {
         </script>
       </Helmet>
 
-      {/* Blog post content */}
+      {/* Blog post content with reserved space for images */}
       <div className="flex flex-col items-center">
         {post.image && (
           <img
@@ -138,6 +151,7 @@ function BlogPost() {
             className="w-1/2 h-auto mb-4 rounded-lg"
             loading="lazy"
             onError={(e) => setImageError(`Failed to load image: ${e.target.src}`)}
+            style={{ minHeight: '200px' }} // Reserve space to prevent layout shift
           />
         )}
         {imageError && <p className="text-red-400">{imageError}</p>}
@@ -158,6 +172,7 @@ function BlogPost() {
                     className="w-full h-auto my-4 rounded-lg"
                     loading="lazy"
                     onError={(e) => setImageError(`Failed to load inline image: ${e.target.src}`)}
+                    style={{ minHeight: '150px' }} // Reserve space to prevent layout shift
                   />
                 )}
                 <div dangerouslySetInnerHTML={{ __html: part.text }} />
@@ -167,7 +182,7 @@ function BlogPost() {
         ))}
       </div>
 
-      {/* Disqus comments */}
+      {/* Disqus comments with reserved space */}
       <div className="max-w-2xl mx-auto" ref={disqusRef}>
         <DiscussionEmbed
           shortname="blockspeak"
