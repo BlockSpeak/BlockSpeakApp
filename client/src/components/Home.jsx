@@ -1,10 +1,26 @@
 // components/Home.jsx
 // MetaMask login option landing page, a sneak peek of dashboard features, and a CTA to explore the dashboard.
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async'; // Import Helmet for dynamic SEO tags
 
 function Home({ loginWithMetaMask, loginMessage }) {
+  const [isMobile, setIsMobile] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  // Detect mobile on mount
+  useEffect(() => {
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    setIsMobile(/android|iPhone|iPad|iPod/i.test(userAgent));
+  }, []);
+
+  const handleLogin = async () => {
+    const success = await loginWithMetaMask();
+    if (!success && isMobile) {
+      setShowInstallPrompt(true); // Show install prompt if login fails on mobile
+    }
+  };
+
   return (
     <main className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4 sm:p-8">
       {/* SEO Tags: Dynamic title, meta description, and keywords for better Google ranking */}
@@ -30,13 +46,27 @@ function Home({ loginWithMetaMask, loginMessage }) {
       </p>
       {/* Login button */}
       <button
-        onClick={loginWithMetaMask}
+        onClick={handleLogin}
         className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl w-full sm:w-auto transition-transform duration-200 hover:scale-105"
       >
         Login with MetaMask
       </button>
       {/* Display login feedback */}
       {loginMessage && <p className="text-red-400 mt-4">{loginMessage}</p>}
+      {/* Install prompt for mobile users if MetaMask is not detected */}
+      {showInstallPrompt && (
+        <div className="mt-4 text-center text-white">
+          <p>MetaMask not detected! Please install it:</p>
+          <a
+            href="https://metamask.app.link/dapp/blockspeak.co"
+            className="text-blue-400 underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Install MetaMask
+          </a>
+        </div>
+      )}
 
       {/* Sneak Peek Content */}
       <section className="mt-12 text-center">
@@ -73,7 +103,7 @@ function Home({ loginWithMetaMask, loginMessage }) {
           </div>
         </div>
         <button
-          onClick={loginWithMetaMask}
+          onClick={handleLogin}
           className="mt-8 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg text-lg transition-colors duration-200"
         >
           Explore the Dashboard

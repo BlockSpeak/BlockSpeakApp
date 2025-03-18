@@ -4,6 +4,17 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import MetaMaskSDK from '@metamask/sdk';
+
+// Initialize MetaMask SDK for browser and mobile compatibility
+const MMSDK = new MetaMaskSDK({
+  dappMetadata: {
+    name: 'BlockSpeak',
+    url: 'https://blockspeak.co', // Live URL for Render
+  },
+  useDeeplink: true, // Enable deep linking for mobile support
+});
+const ethereum = MMSDK.getProvider(); // Use SDK provider instead of window.ethereum
 
 // Base URL switches between local development and production environments
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
@@ -17,16 +28,16 @@ export default function useAuth() {
   // Login function: Connects MetaMask, signs a nonce, and authenticates with the backend
   const loginWithMetaMask = async () => {
     setLoginMessage(''); // Clear any previous message
-    if (!window.ethereum) {
+    if (!ethereum) {
       setLoginMessage('Please install MetaMask!');
-      return false; // Early return if MetaMask isn’t installed
+      return false; // Early return if MetaMask isn’t available
     }
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
       const nonce = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' }).then((res) => res.text());
       const message = `Log in to BlockSpeak: ${nonce}`;
-      const signature = await window.ethereum.request({
+      const signature = await ethereum.request({
         method: 'personal_sign',
         params: [message, address],
       });
