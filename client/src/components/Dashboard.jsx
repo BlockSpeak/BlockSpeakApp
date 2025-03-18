@@ -1,7 +1,6 @@
 // Dashboard.jsx
 // Purpose: Main user interface after login, displaying forms for smart contracts, DAOs, and crypto queries.
 // wallet analytics, price graphs, top coins, and news. Includes DAO voting: join, propose, and vote on ideas.
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
@@ -112,7 +111,7 @@ function Dashboard({ account, logout, subscription }) {
       setJoinResult(response.data.message);
       fetchProposals();
     } catch (error) {
-      setJoinResult(error.response?.data?.error || 'Sorry, we couldn’t join the DAO. Try again!');
+      setJoinResult(error.response?.data?.error || 'Sorry, we couldnï¿½t join the DAO. Try again!');
       console.error('Join DAO error:', error);
     }
   };
@@ -134,7 +133,7 @@ function Dashboard({ account, logout, subscription }) {
       setProposalDescription('');
       fetchProposals();
     } catch (error) {
-      setProposalResult(error.response?.data?.error || 'Sorry, we couldn’t create your proposal. Try again!');
+      setProposalResult(error.response?.data?.error || 'Sorry, we couldnï¿½t create your proposal. Try again!');
       console.error('Create proposal error:', error);
     }
   };
@@ -153,7 +152,7 @@ function Dashboard({ account, logout, subscription }) {
       setVoteResult(response.data.message);
       fetchProposals();
     } catch (error) {
-      setVoteResult(error.response?.data?.error || 'Sorry, we couldn’t record your vote. Try again!');
+      setVoteResult(error.response?.data?.error || 'Sorry, we couldnï¿½t record your vote. Try again!');
       console.error('Vote error:', error);
     }
   };
@@ -397,7 +396,7 @@ function Dashboard({ account, logout, subscription }) {
                       </div>
                     ))
                   ) : (
-                    <p className="text-accent">No ideas yet—propose one above!</p>
+                    <p className="text-accent">No ideas yetï¿½propose one above!</p>
                   )}
                 </div>
                 {voteResult && (

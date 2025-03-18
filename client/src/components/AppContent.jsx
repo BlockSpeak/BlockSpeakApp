@@ -2,9 +2,10 @@
 // Purpose: Centralizes routing and layout for BlockSpeak, rendering navigation and page content.
 // Passes authentication state and functions to child components like Subscribe and Success.
 
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, Routes, Route, useNavigate } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async'; // Helmet for default SEO tags
+import { Helmet } from 'react-helmet-async';
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import Home from './Home';
 import Dashboard from './Dashboard';
 import Subscribe from './Subscribe';
@@ -15,8 +16,8 @@ import HowItWorks from './HowItWorks';
 import EmailSignup from './EmailSignup';
 import Login from './Login';
 import ProtectedRoute from './ProtectedRoute';
-import Faq from './Faq'; // Import Faq
-import Blog from './Blog'; // Import Blog
+import Faq from './Faq';
+import Blog from './Blog';
 import BlogPost from './BlogPost';
 import Prices from './Prices';
 
@@ -31,6 +32,7 @@ function AppContent({
   logout,
 }) {
   const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Redirect to dashboard if logged in and on home page
   useEffect(() => {
@@ -39,9 +41,23 @@ function AppContent({
     }
   }, [account, navigate]);
 
+  // Define navigation links to avoid duplication
+  const navLinks = [
+    { to: '/', label: 'Home' },
+    account && { to: '/dashboard', label: 'Dashboard' },
+    { to: '/marketplace', label: 'Marketplace' },
+    { to: '/prices', label: 'Prices' },
+    { to: '/blog', label: 'Blog' },
+    { to: '/about', label: 'About Us' },
+    { to: '/how-it-works', label: 'How It Works' },
+    account
+      ? { to: '/subscribe', label: 'Subscribe', rel: 'nofollow' }
+      : { to: '/login?return=/subscribe', label: 'Subscribe', rel: 'nofollow' },
+  ].filter(Boolean);
+
   return (
     <div className="flex flex-col min-h-screen bg-dark">
-      {/* Set default SEO tags for the entire app */}
+      {/* Default SEO tags */}
       <Helmet>
         <title>BlockSpeak - Blockchain Tools & Smart Contracts</title>
         <meta
@@ -49,48 +65,66 @@ function AppContent({
           content="BlockSpeak: Create smart contracts, explore DAOs, and manage your blockchain journey with ease."
         />
       </Helmet>
-      <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0 text-center sm:text-left">
-        <Link to="/">
-          <img
-            src="/blockspeakvert.svg"
-            alt="Block Speak Vertical Logo"
-            className="h-16 mx-auto sm:mx-0 transition-transform duration-200 hover:scale-105"
-          />
-        </Link>
-        <div className="flex flex-col sm:flex-row sm:justify-center gap-4 sm:gap-0 sm:space-x-6 mt-4 sm:mt-0">
-          <Link to="/" className="text-primary hover:text-purple-400 text-lg py-2">
-            Home
-          </Link>
-          {account && (
-            <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg py-2">
-              Dashboard
-            </Link>
-          )}
-          <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg py-2">
-            Marketplace
-          </Link>
-          <Link to="/prices" className="text-primary hover:text-purple-400 text-lg py-2">Prices</Link>
-          <Link to="/blog" className="text-primary hover:text-purple-400 text-lg py-2">Blog</Link>
-          <Link to="/about" className="text-primary hover:text-purple-400 text-lg py-2">
-            About Us
-          </Link>
-          <Link to="/how-it-works" className="text-primary hover:text-purple-400 text-lg py-2">
-            How It Works
-          </Link>
-          {/* Subscribe link: if logged in, go to /subscribe; else, go to /login?return=/subscribe */}
-          {account ? (
-            <Link to="/subscribe" className="text-primary hover:text-purple-400 text-lg py-2" rel="nofollow">
-              Subscribe
-            </Link>
-          ) : (
-            <Link to="/login?return=/subscribe" className="text-primary hover:text-purple-400 text-lg py-2" rel="nofollow">
-              Subscribe
-            </Link>
-          )}
-        </div>
-      </nav>
-      <main className="flex-grow">
 
+      {/* Navigation Bar */}
+      <nav className="bg-gray-800 p-4">
+        <div className="flex justify-between items-center">
+          {/* Logo */}
+          <Link to="/">
+            <img
+              src="/blockspeakvert.svg"
+              alt="Block Speak Logo"
+              className="h-16 transition-transform duration-200 hover:scale-105"
+            />
+          </Link>
+
+          {/* Desktop Links */}
+          <div className="hidden sm:flex space-x-6">
+            {navLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="text-primary hover:text-purple-400 text-lg py-2"
+                rel={link.rel}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          {/* Hamburger Button (Mobile Only) */}
+          <button
+            className="sm:hidden text-white"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? (
+              <XMarkIcon className="h-6 w-6" />
+            ) : (
+              <Bars3Icon className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+
+        {/* Mobile Menu (Visible when hamburger is clicked) */}
+        {isMenuOpen && (
+          <div className="sm:hidden mt-4 space-y-2">
+            {navLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="block text-primary hover:text-purple-400 text-lg py-2"
+                rel={link.rel}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+        )}
+      </nav>
+
+      {/* Main Content */}
+      <main className="flex-grow">
         <Routes>
           <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} loginMessage={loginMessage} />} />
           <Route
@@ -103,7 +137,7 @@ function AppContent({
               />
             )}
           />
-          {/* Protect /dashboard route: requires authentication, redirects to /login if not logged in */}
+          {/* Protected Dashboard Route */}
           <Route
             path="/dashboard"
             element={(
@@ -112,8 +146,7 @@ function AppContent({
               </ProtectedRoute>
             )}
           />
-          {/* Protect /subscribe route: requires authentication, redirects to /login if not logged in */}
-          {/* Pass setSubscription to Subscribe to allow state updates after payment */}
+          {/* Protected Subscribe Route */}
           <Route
             path="/subscribe"
             element={(
@@ -122,7 +155,6 @@ function AppContent({
               </ProtectedRoute>
             )}
           />
-          {/* FIX: Added setAccount and setSubscription to Success for state updates */}
           <Route
             path="/success"
             element={<Success account={account} setAccount={setAccount} setSubscription={setSubscription} />}
@@ -130,12 +162,14 @@ function AppContent({
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/how-it-works" element={<HowItWorks />} />
-          <Route path="/faq" element={<Faq />} /> {/* New FAQ route */}
-          <Route path="/blog" element={<Blog />} /> {/* New Blog route */}
+          <Route path="/faq" element={<Faq />} />
+          <Route path="/blog" element={<Blog />} />
           <Route path="/blog/:slug" element={<BlogPost />} />
-          <Route path="/prices" element={<Prices />} /> {/* New Prices route */}
+          <Route path="/prices" element={<Prices />} />
         </Routes>
       </main>
+
+      {/* Footer */}
       <footer className="bg-gray-800 p-4 w-full">
         <EmailSignup />
       </footer>
