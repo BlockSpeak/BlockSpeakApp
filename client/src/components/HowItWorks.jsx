@@ -140,12 +140,13 @@ function HowItWorks() {
         <section className="mt-12 text-center">
           <h2 className="text-3xl font-bold mb-4">Ready to Start?</h2>
           <p>Try BlockSpeak today and master smart contract creation with our blockchain tutorial.</p>
-          <a
-            href="/signup"
+          {/* Replace the old <a href="/signup"> with a <Link> to an existing route */}
+          <Link
+            to="/login?return=/subscribe"
             className="inline-block bg-primary text-dark px-6 py-3 mt-4 rounded hover:bg-accent"
           >
             Get Started with BlockSpeak
-          </a>
+          </Link>
         </section>
 
         {/* Comments Section */}
