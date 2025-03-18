@@ -4,17 +4,6 @@
 
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import MetaMaskSDK from '@metamask/sdk';
-
-// Initialize MetaMask SDK for browser and mobile compatibility
-const MMSDK = new MetaMaskSDK({
-  dappMetadata: {
-    name: 'BlockSpeak',
-    url: 'https://blockspeak.co', // Live URL for Render
-  },
-  useDeeplink: true, // Enable deep linking for mobile support
-});
-const ethereum = MMSDK.getProvider(); // Use SDK provider instead of window.ethereum
 
 // Base URL switches between local development and production environments
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
@@ -28,16 +17,16 @@ export default function useAuth() {
   // Login function: Connects MetaMask, signs a nonce, and authenticates with the backend
   const loginWithMetaMask = async () => {
     setLoginMessage(''); // Clear any previous message
-    if (!ethereum) {
+    if (!window.ethereum) {
       setLoginMessage('Please install MetaMask!');
-      return false; // Early return if MetaMask isn’t available
+      return false; // Early return if MetaMask isnï¿½t installed
     }
     try {
-      const accounts = await ethereum.request({ method: 'eth_requestAccounts' });
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
       const nonce = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' }).then((res) => res.text());
       const message = `Log in to BlockSpeak: ${nonce}`;
-      const signature = await ethereum.request({
+      const signature = await window.ethereum.request({
         method: 'personal_sign',
         params: [message, address],
       });
@@ -87,7 +76,7 @@ export default function useAuth() {
     const restoreSession = async () => {
       const storedAccount = localStorage.getItem('account');
       if (!storedAccount) {
-        // No account stored, assume user isn’t logged in
+        // No account stored, assume user isnï¿½t logged in
         setSubscription('free');
         setAccount(null);
         return; // Skip API call to avoid 401 error

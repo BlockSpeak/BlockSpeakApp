@@ -143,6 +143,7 @@ def apply_csp(response):
         "https://blockspeak.disqus.com "
         "https://c.disquscdn.com "
         "https://disqus.com "
+        "https://metamask-sdk.api.cx.metamask.io "
         "https://links.services.disqus.com;"
         "img-src 'self' data: "
         "http://127.0.0.1:8080 "
@@ -1143,7 +1144,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
         conn.close()
 
 # Run with new_posts_only=False to replace existing posts above, run this one below for testing then comment out after run.
-add_bulk_blog_posts(new_posts_only=True) 
+# add_bulk_blog_posts(new_posts_only=True) 
 
 
 @app.route("/api/analytics/<address>")
