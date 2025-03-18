@@ -18,6 +18,7 @@ import ProtectedRoute from './ProtectedRoute';
 import Faq from './Faq'; // Import Faq
 import Blog from './Blog'; // Import Blog
 import BlogPost from './BlogPost';
+import Prices from './Prices';
 
 function AppContent({
   account,
@@ -68,6 +69,7 @@ function AppContent({
           <Link to="/marketplace" className="text-primary hover:text-purple-400 text-lg py-2">
             Marketplace
           </Link>
+          <Link to="/prices" className="text-primary hover:text-purple-400 text-lg py-2">Prices</Link>
           <Link to="/blog" className="text-primary hover:text-purple-400 text-lg py-2">Blog</Link>
           <Link to="/about" className="text-primary hover:text-purple-400 text-lg py-2">
             About Us
@@ -88,6 +90,7 @@ function AppContent({
         </div>
       </nav>
       <main className="flex-grow">
+
         <Routes>
           <Route path="/" element={<Home loginWithMetaMask={loginWithMetaMask} loginMessage={loginMessage} />} />
           <Route
@@ -130,6 +133,7 @@ function AppContent({
           <Route path="/faq" element={<Faq />} /> {/* New FAQ route */}
           <Route path="/blog" element={<Blog />} /> {/* New Blog route */}
           <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/prices" element={<Prices />} /> {/* New Prices route */}
         </Routes>
       </main>
       <footer className="bg-gray-800 p-4 w-full">

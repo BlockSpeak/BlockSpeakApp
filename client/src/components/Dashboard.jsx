@@ -3,7 +3,7 @@
 // wallet analytics, price graphs, top coins, and news. Includes DAO voting: join, propose, and vote on ideas.
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // Added for navigation
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
@@ -16,6 +16,8 @@ const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:80
 
 function Dashboard({ account, logout, subscription }) {
   const navigate = useNavigate(); // For redirecting to login or subscribe pages
+  const location = useLocation(); // NEW: Get state from navigation
+  const selectedCoin = location.state?.selectedCoin; // NEW: e.g., "bitcoin"
 
   // State variables for various dashboard functionalities
   const [contractRequest, setContractRequest] = useState(''); // Input for creating a smart contract
@@ -35,6 +37,13 @@ function Dashboard({ account, logout, subscription }) {
   const [proposalResult, setProposalResult] = useState(''); // Result message from creating proposal
   const [proposals, setProposals] = useState([]); // List of proposals for the DAO
   const [voteResult, setVoteResult] = useState(''); // Result message from voting
+
+  // NEW: Pre-fill contract request if a coin is selected
+  useEffect(() => {
+    if (selectedCoin) {
+      setContractRequest(`Send 1 ETH for ${selectedCoin}`);
+    }
+  }, [selectedCoin]);
 
   // requireLoginOrSubscription: Checks if the user is logged in and has a subscription
   // Redirects to login or subscribe page based on user status.

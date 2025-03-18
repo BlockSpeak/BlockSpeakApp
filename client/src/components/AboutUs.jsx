@@ -1,6 +1,6 @@
 // AboutUs.jsx
 // Purpose: Show information about BlockSpeak's mission, approach, and values.
-//          Showcase how simple it is to create a DAO, with a visual and brand logo.
+// Showcase how simple it is to create a DAO, with a visual and brand logo.
 // We use React Helmet to enhance SEO with relevant meta tags, titles, and structured data.
 
 import React from 'react';

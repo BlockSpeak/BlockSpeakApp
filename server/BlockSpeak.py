@@ -1017,7 +1017,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 f"- An H1 heading (the title itself) using <h1> tags, e.g., <h1>{title}</h1>\n"
                 f"- At least 2 H2 subheadings using <h2> tags, e.g., <h2><strong>Subheading</strong></h2>\n"
                 f"- At least 3 H3 sub-subheadings under the H2s using <h3> tags, e.g., <h3>Sub-subheading</h3>\n"
+                f"- Use <p> tags for paragraphs with clear line breaks between sections.\n"
                 f"- Include a placeholder for an inline image halfway through with the text '[Inline Image Placeholder]'\n"
+                f"- Add variety: use <ul><li> tags for bullet points and a <blockquote><p>Quote</p></blockquote> for emphasis.\n"
                 f"- Do NOT use markdown syntax like ### for headings; use HTML tags instead.\n"
                 f"- Ensure paragraphs are wrapped in <p> tags, e.g., <p>Paragraph text</p>\n"
                 f"- Bold key phrases or headings where appropriate using <strong> or <b> tags to add flair.\n"
@@ -1324,6 +1326,13 @@ def coin_graph(coin_id):
     # Returns 7-day price graph data for a coin
     # Used for the dashboard graph
     return jsonify(get_coin_graph(coin_id))
+
+
+@app.route("/api/prices", methods=["GET"])
+def get_prices():
+    top_coins = get_top_coins()
+    return jsonify({"top_coins": top_coins})
+
 
 @app.route("/api/update_account", methods=["POST"])
 @login_required
