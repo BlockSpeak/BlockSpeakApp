@@ -7,6 +7,8 @@ import axios from 'axios';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 
+axios.defaults.withCredentials = true;
+
 // Register ChartJS components for graphs
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -36,6 +38,8 @@ function Dashboard({ account, logout, subscription }) {
   const [proposalResult, setProposalResult] = useState(''); // Result message from creating proposal
   const [proposals, setProposals] = useState([]); // List of proposals for the DAO
   const [voteResult, setVoteResult] = useState(''); // Result message from voting
+  const [graphLoading, setGraphLoading] = useState(true); // Loading state for graph
+  const [graphError, setGraphError] = useState(null); // Error state for graph
 
   // NEW: Pre-fill contract request if a coin is selected
   useEffect(() => {
@@ -111,7 +115,7 @@ function Dashboard({ account, logout, subscription }) {
       setJoinResult(response.data.message);
       fetchProposals();
     } catch (error) {
-      setJoinResult(error.response?.data?.error || 'Sorry, we couldn�t join the DAO. Try again!');
+      setJoinResult(error.response?.data?.error || 'Sorry, we couldn’t join the DAO. Try again!');
       console.error('Join DAO error:', error);
     }
   };
@@ -133,7 +137,7 @@ function Dashboard({ account, logout, subscription }) {
       setProposalDescription('');
       fetchProposals();
     } catch (error) {
-      setProposalResult(error.response?.data?.error || 'Sorry, we couldn�t create your proposal. Try again!');
+      setProposalResult(error.response?.data?.error || 'Sorry, we couldn’t create your proposal. Try again!');
       console.error('Create proposal error:', error);
     }
   };
@@ -152,7 +156,7 @@ function Dashboard({ account, logout, subscription }) {
       setVoteResult(response.data.message);
       fetchProposals();
     } catch (error) {
-      setVoteResult(error.response?.data?.error || 'Sorry, we couldn�t record your vote. Try again!');
+      setVoteResult(error.response?.data?.error || 'Sorry, we couldn’t record your vote. Try again!');
       console.error('Vote error:', error);
     }
   };
@@ -196,6 +200,9 @@ function Dashboard({ account, logout, subscription }) {
   // Fetches data from the backend to populate the dashboard with news, top coins, analytics, and Bitcoin price graph.
   useEffect(() => {
     let mounted = true;
+    setGraphLoading(true); // Start loading
+    setGraphError(null); // Clear previous errors
+
     axios.get(`${BASE_URL}/api/`).then((res) => {
       if (mounted) {
         setNews(res.data.news_items);
@@ -222,9 +229,15 @@ function Dashboard({ account, logout, subscription }) {
                 fill: false,
               }],
             });
+            setGraphLoading(false); // Data is ready, stop loading
+            setGraphError(null); // Clear any previous errors
           }
         })
-        .catch((err) => console.error('Graph error:', err));
+        .catch((err) => {
+          console.error('Graph error:', err);
+          setGraphLoading(false); // Stop loading even if there’s an error
+          setGraphError('Failed to load graph data. Please try again later.'); // Set error message
+        });
     }
     return () => { mounted = false; };
   }, [account]);
@@ -240,8 +253,22 @@ function Dashboard({ account, logout, subscription }) {
     </div>
   ) : null;
 
+  // Refactor the graph section to avoid nested ternaries
+  let graphContent;
+  if (graphLoading) {
+    graphContent = <p className="text-accent">Loading graph...</p>;
+  } else if (graphError) {
+    graphContent = <p className="text-red-400">{graphError}</p>;
+  } else if (graphData) {
+    graphContent = (
+      <Line data={graphData} options={{ responsive: true, scales: { y: { beginAtZero: false } } }} />
+    );
+  } else {
+    graphContent = <p className="text-accent">No graph data available.</p>;
+  }
+
   return (
-    <div className="bg-dark text-white min-h-screen p-4">
+    <div className="bg-dark text-white min-h-screen p-4 overflow-hidden">
       <h1 className="text-4xl font-bold text-primary mb-4 text-center">
         {subscription !== 'free' ? 'Welcome to Your BlockSpeak Dashboard' : 'BlockSpeak Dashboard'}
       </h1>
@@ -249,7 +276,6 @@ function Dashboard({ account, logout, subscription }) {
         {account ? (
           <>
             Connected: {account.slice(0, 6)}...{account.slice(-4)} ({subscription})
-            {/* Updated logout button to redirect to home after logout */}
             <button
               onClick={async () => {
                 await logout();
@@ -331,7 +357,7 @@ function Dashboard({ account, logout, subscription }) {
               Enter your DAO address to join as a member, propose ideas, and vote on decisions!
             </p>
             <form onSubmit={joinDao} className="mt-4">
-              <label className="block text-accent mb-1">DAO Address (e.g., 0xa513E6E4b8f2a923D98304ec87F64353C4D5C853)</label>
+              <label className="block text-accent mb-1">DAO Address</label>
               <input
                 type="text"
                 value={daoAddress}
@@ -396,7 +422,7 @@ function Dashboard({ account, logout, subscription }) {
                       </div>
                     ))
                   ) : (
-                    <p className="text-accent">No ideas yet�propose one above!</p>
+                    <p className="text-accent">No ideas yet—propose one above!</p>
                   )}
                 </div>
                 {voteResult && (
@@ -439,13 +465,11 @@ function Dashboard({ account, logout, subscription }) {
           </form>
           {queryResult && <p className="text-accent mb-4">{queryResult}</p>}
 
-          {/* Bitcoin price graph */}
-          {graphData && (
-            <div className="bg-gray-800 p-4 rounded">
-              <h2 className="text-xl font-bold text-primary">Bitcoin Price (7 Days)</h2>
-              <Line data={graphData} options={{ responsive: true, scales: { y: { beginAtZero: false } } }} />
-            </div>
-          )}
+          {/* Bitcoin price graph section */}
+          <div className="bg-gray-800 p-4 rounded">
+            <h2 className="text-xl font-bold text-primary">Bitcoin Price (7 Days)</h2>
+            {graphContent}
+          </div>
         </div>
       </div>
 

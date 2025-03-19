@@ -2,11 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
+html, body {
     margin: 0;
+    padding: 0;
+    background-color: #1a1a1a; /* Dark background to match your theme */
+    overscroll-behavior: none; /* Prevents overscrolling or pull-to-refresh */
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+    min-height: 100vh; /* Ensures the root div takes up full viewport height */
+    background-color: #1a1a1a; /* Matches the dark theme */
 }
 
 code {
