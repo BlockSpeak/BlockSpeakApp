@@ -21,7 +21,7 @@ function Subscribe({ account, subscription, setSubscription }) {
         setEthPaymentAddress(response.data.eth_payment_address);
       } catch (error) {
         console.error('Failed to fetch payment address:', error);
-        // Don’t alert here; we’ll handle UI feedback gracefully below
+        // Do not alert here; we will handle UI feedback gracefully below
       }
     };
     fetchPaymentAddress();

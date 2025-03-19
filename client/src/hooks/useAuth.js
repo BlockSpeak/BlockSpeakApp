@@ -1,8 +1,7 @@
-// hooks/useAuth.js
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Switch the base URL dynamically for development or production
+// Dynamically switch between local and production environments
 const BASE_URL = window.location.hostname === 'localhost'
   ? 'http://127.0.0.1:8080'
   : 'https://blockspeak.onrender.com';
@@ -11,40 +10,37 @@ export default function useAuth() {
   const [account, setAccount] = useState(localStorage.getItem('account') || null);
   const [subscription, setSubscription] = useState('free');
   const [loginMessage, setLoginMessage] = useState('');
-  const [isMobile, setIsMobile] = useState(false); // Detect if user is on mobile
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Detect mobile device on component mount
+  // Detect mobile device
   useEffect(() => {
     const { userAgent } = navigator;
     setIsMobile(/android|iphone|ipad|ipod/i.test(userAgent));
   }, []);
 
-  // Restore session from localStorage on initial load
+  // Restore user session from localStorage
   useEffect(() => {
     const restoreSession = async () => {
       const storedAccount = localStorage.getItem('account');
-      if (!storedAccount) {
-        setSubscription('free');
-        setAccount(null);
-        return;
-      }
+      if (!storedAccount) return;
+
       try {
         const { data } = await axios.get(`${BASE_URL}/api/subscription_status`, { withCredentials: true });
         setSubscription(data.subscription);
-        setAccount(data.subscription !== 'free' ? storedAccount : null);
-        if (data.subscription === 'free') localStorage.removeItem('account');
+        if (data.subscription !== 'free') {
+          setAccount(storedAccount);
+        } else {
+          localStorage.removeItem('account');
+        }
       } catch (error) {
         console.error('Session restoration failed:', error);
-        setSubscription('free');
-        setAccount(null);
         localStorage.removeItem('account');
       }
     };
-
     restoreSession();
-  }, []); // Runs once on mount
+  }, []);
 
-  // Authenticate user using MetaMask
+  // Login with MetaMask
   const loginWithMetaMask = async () => {
     setLoginMessage('');
 
@@ -60,14 +56,15 @@ export default function useAuth() {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
 
-      const nonce = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' }).then((res) => res.text());
-      const message = `Log in to BlockSpeak: ${nonce}`;
-
+      // Secure Nonce Signing for Authentication
+      const nonceRes = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' });
+      const nonce = await nonceRes.text();
       const signature = await window.ethereum.request({
         method: 'personal_sign',
-        params: [message, address],
+        params: [`Log in to BlockSpeak: ${nonce}`, address],
       });
 
+      // Verify Signature with Backend
       const response = await fetch(`${BASE_URL}/login/metamask`, {
         method: 'POST',
         credentials: 'include',
@@ -86,7 +83,7 @@ export default function useAuth() {
       throw new Error('Login unsuccessful, server rejected authentication.');
     } catch (error) {
       if (error.code === 4001) {
-        setLoginMessage('Login cancelled by user. Please retry.');
+        setLoginMessage('Login cancelled. Please retry.');
       } else {
         setLoginMessage('An unexpected error occurred during login.');
         console.error('Login error:', error);

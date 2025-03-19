@@ -448,6 +448,7 @@ function Dashboard({ account, logout, subscription }) {
           )}
         </div>
       </div>
+
       {/* Top coins section */}
       <div className="mt-4">
         <h2 className="text-xl font-bold text-primary">Top Coins</h2>
@@ -462,6 +463,7 @@ function Dashboard({ account, logout, subscription }) {
           ))}
         </div>
       </div>
+
       {/* Latest news section */}
       <div className="mt-4">
         <h2 className="text-xl font-bold text-primary">Latest News</h2>

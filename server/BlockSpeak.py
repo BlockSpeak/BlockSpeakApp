@@ -1144,7 +1144,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
         conn.close()
 
 # Run with new_posts_only=False to replace existing posts above, run this one below for testing then comment out after run.
-add_bulk_blog_posts(new_posts_only=True) 
+# add_bulk_blog_posts(new_posts_only=True) 
 
 
 @app.route("/api/analytics/<address>")
@@ -1323,10 +1323,20 @@ def home_api():
     })
 
 @app.route("/api/coin_graph/<coin_id>")
-def coin_graph(coin_id):
-    # Returns 7-day price graph data for a coin
-    # Used for the dashboard graph
-    return jsonify(get_coin_graph(coin_id))
+def get_coin_graph(coin_id):
+    """Fetches 7-day price history for a coin"""
+    url = f"https://api.coincap.io/v2/assets/{coin_id}/history?interval=d1"
+    try:
+        response = requests.get(url).json()
+        if "data" not in response:
+            return jsonify({"error": "No graph data available"}), 500
+        return jsonify({
+            "dates": [point["time"] for point in response["data"]],
+            "prices": [float(point["priceUsd"]) for point in response["data"]]
+        })
+    except Exception as e:
+        app.logger.error(f"Graph API failed: {str(e)}")
+        return jsonify({"error": "Failed to fetch price data"}), 500
 
 
 @app.route("/api/prices", methods=["GET"])

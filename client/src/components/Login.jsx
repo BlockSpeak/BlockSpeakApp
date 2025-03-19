@@ -1,6 +1,3 @@
-import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-
 /**
  * Login Component
  * ----------------------------------------------------
@@ -10,59 +7,69 @@ import { useNavigate, useLocation } from 'react-router-dom';
  * directs users to the MetaMask deep link if they’re
  * on a browser/device without a built-in Ethereum provider.
  */
-function Login({ loginWithMetaMask, loginMessage, setLoginMessage }) {
-  // useNavigate: Allows us to programmatically route the user
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { isMobile } from 'react-device-detect';
+import useAuth from '../hooks/useAuth';
+
+function Login() {
+  const { loginWithMetaMask, loginMessage, setLoginMessage } = useAuth();
   const navigate = useNavigate();
-
-  // useLocation: Lets us read the `?return=` URL param so we know where to send them post-login
   const location = useLocation();
+  const [loading, setLoading] = useState(false);
 
-  // handleLogin: Triggered when user clicks the "Login with MetaMask" button
+  useEffect(() => {
+    if (isMobile && window.ethereum) {
+      // Ensure MetaMask is detected properly in mobile browser
+      window.ethereum.autoRefreshOnNetworkChange = false;
+    }
+  }, []);
+
   const handleLogin = async () => {
-    // Clear any existing status/error messages
     setLoginMessage('');
+    setLoading(true);
+    if (isMobile) {
+      if (!window.ethereum) {
+        window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
+        return;
+      }
 
-    // 1) Check if MetaMask (an Ethereum provider) is injected in the current browser context
-    const hasMetaMask = typeof window.ethereum !== 'undefined';
-
-    if (hasMetaMask) {
-      // 2) If MetaMask is present (desktop or mobile in-app browser), proceed with normal login
       try {
-        // loginWithMetaMask is defined in your custom hook (useAuth.js).
-        // It handles the nonce retrieval, personal_sign, and backend session setup.
         const success = await loginWithMetaMask();
         if (success) {
-          // After successful login, check if the URL has `?return=someRoute`.
-          // If not, we default to "/dashboard".
           const returnUrl = new URLSearchParams(location.search).get('return') || '/dashboard';
-
-          // Programmatically navigate to the intended route
           navigate(returnUrl);
         }
       } catch (error) {
-        // Show a user-friendly message if something goes wrong
-        setLoginMessage('Login failed due to an unexpected error in MetaMask flow!');
-        console.error('Login error:', error);
+        console.error('MetaMask mobile login failed:', error);
+        setLoginMessage('MetaMask login failed. Please try again.');
       }
     } else {
-      // 3) If no Ethereum provider is detected (e.g., user on mobile Safari or a non-crypto browser),
-      //    redirect them to the MetaMask app link so they can install or open it.
-      window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
+      // Desktop flow
+      try {
+        const success = await loginWithMetaMask();
+        if (success) {
+          const returnUrl = new URLSearchParams(location.search).get('return') || '/dashboard';
+          navigate(returnUrl);
+        }
+      } catch (error) {
+        console.error('MetaMask desktop login failed:', error);
+        setLoginMessage('MetaMask login failed. Please try again.');
+      }
     }
+    setLoading(false);
   };
 
   return (
     <div className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4">
       <h1 className="text-4xl font-bold text-primary mb-6">Login to BlockSpeak</h1>
-
-      {/* If there's a status message (e.g. an error), display it */}
       {loginMessage && <p className="text-red-400 mb-4">{loginMessage}</p>}
-
       <button
         onClick={handleLogin}
-        className="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl transition-transform duration-200 hover:scale-105"
+        className={`bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-lg text-xl transition-transform duration-200 hover:scale-105 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        disabled={loading}
       >
-        Login with MetaMask
+        {loading ? 'Logging in...' : 'Login with MetaMask'}
       </button>
     </div>
   );

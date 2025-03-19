@@ -1,25 +1,29 @@
-// Enhanced Home.jsx for Improved MetaMask Mobile Login Experience
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 
+/**
+ * Home Component
+ * ----------------------------------------------------
+ * This component serves as the landing page of BlockSpeak.
+ * It provides users the ability to login via MetaMask and ensures
+ * they are connected to the appropriate network (Mainnet for live users,
+ * Hardhat for local development and testing).
+ */
 function Home({ loginWithMetaMask, loginMessage }) {
   const [isMobile, setIsMobile] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
-  // Detect if user is on a mobile device on component mount
+  // Detect if the user is on a mobile device on component mount
   useEffect(() => {
     const { userAgent } = navigator;
     setIsMobile(/android|iphone|ipad|ipod/i.test(userAgent));
   }, []);
 
-  // Handle MetaMask login and manage errors specifically for mobile users
+  // Handle MetaMask login and manage errors for mobile users
   const handleLogin = async () => {
-    // Attempt login through MetaMask
     const success = await loginWithMetaMask();
-
     if (!success) {
       if (isMobile) {
-        // Show the MetaMask install prompt specifically on mobile devices if login fails
         setShowInstallPrompt(true);
       } else {
         alert('MetaMask login failed! Please ensure you are logged into MetaMask and try again.');
@@ -31,14 +35,8 @@ function Home({ loginWithMetaMask, loginMessage }) {
     <main className="bg-dark text-white min-h-screen flex flex-col items-center justify-center p-4 sm:p-8">
       <Helmet>
         <title>BlockSpeak - Create Smart Contracts & Explore Blockchain</title>
-        <meta
-          name="description"
-          content="BlockSpeak: Create smart contracts, ask crypto questions, and own your blockchain. Join the future of decentralized technology today."
-        />
-        <meta
-          name="keywords"
-          content="smart contracts, blockchain, crypto, DAO, MetaMask, decentralized"
-        />
+        <meta name="description" content="BlockSpeak: Create smart contracts, ask crypto questions, and own your blockchain. Join the future of decentralized technology today." />
+        <meta name="keywords" content="smart contracts, blockchain, crypto, DAO, MetaMask, decentralized" />
       </Helmet>
 
       <h1 className="text-4xl sm:text-6xl md:text-8xl font-bold text-primary mb-6 tracking-wider">
@@ -68,23 +66,13 @@ function Home({ loginWithMetaMask, loginMessage }) {
           <p className="mb-2">MetaMask not detected! To proceed:</p>
           <ul className="space-y-2">
             <li>
-              <a
-                href="https://metamask.app.link/dapp/blockspeak.co"
-                className="text-blue-300 underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href="https://metamask.app.link/dapp/blockspeak.co" className="text-blue-300 underline" target="_blank" rel="noopener noreferrer">
                 Open in MetaMask App
               </a>
               <span className="text-sm"> (recommended for iOS/Android)</span>
             </li>
             <li>
-              <a
-                href="https://metamask.io"
-                className="text-blue-300 underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href="https://metamask.io" className="text-blue-300 underline" target="_blank" rel="noopener noreferrer">
                 Install MetaMask Extension
               </a>
               <span className="text-sm"> (desktop browsers)</span>
@@ -98,30 +86,15 @@ function Home({ loginWithMetaMask, loginMessage }) {
         <h2 className="text-2xl sm:text-3xl font-bold mb-6">See the Dashboard in Action</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           <div>
-            <img
-              src="/creatingthedeao.png"
-              alt="BlockSpeak DAO creation process"
-              className="w-full rounded-lg object-cover"
-              loading="lazy"
-            />
+            <img src="/creatingthedeao.png" alt="BlockSpeak DAO creation process" className="w-full rounded-lg object-cover" loading="lazy" />
             <p className="mt-2 text-sm sm:text-base">Create Your DAO in Seconds</p>
           </div>
           <div>
-            <img
-              src="/fulldashboard.png"
-              alt="BlockSpeak full dashboard view"
-              className="w-full rounded-lg object-cover"
-              loading="lazy"
-            />
+            <img src="/fulldashboard.png" alt="BlockSpeak full dashboard view" className="w-full rounded-lg object-cover" loading="lazy" />
             <p className="mt-2 text-sm sm:text-base">Manage Everything in One Place</p>
           </div>
           <div>
-            <img
-              src="/DAO-created.png"
-              alt="BlockSpeak DAO successfully created"
-              className="w-full rounded-lg object-cover"
-              loading="lazy"
-            />
+            <img src="/DAO-created.png" alt="BlockSpeak DAO successfully created" className="w-full rounded-lg object-cover" loading="lazy" />
             <p className="mt-2 text-sm sm:text-base">See Your DAO Come to Life</p>
           </div>
         </div>
