@@ -615,6 +615,7 @@ def login():
         return jsonify({"success": True, "message": "Logged in!", "email": email})
     return jsonify({"error": "Wrong credentials"}), 400  # Bad email or password
 
+
 @app.route("/api/logout")
 @login_required
 def logout():
@@ -630,13 +631,17 @@ def login_metamask():
     data = request.json
     address = data.get("address")
     signature = data.get("signature")
-    if not address or not signature:
-        return jsonify({"error": "Missing data"}), 400
-    nonce = session.pop("nonce", None)
-    if not nonce:
-        return jsonify({"error": "Invalid nonce"}), 400
-    message = encode_defunct(text=f"Log in to BlockSpeak: {nonce}")
+    nonce = data.get("nonce")  # Get nonce from request body instead of session
+
+    # Check if all required fields are present
+    if not address or not signature or not nonce:
+        return jsonify({"error": "Missing address, signature, or nonce"}), 400
+
+    # Reconstruct the message exactly as it will be signed on the frontend
+    message = encode_defunct(text=f"Log in to BlockSpeak with nonce: {nonce}")
+
     try:
+        # Verify the signature matches the provided address
         recovered_address = w3.eth.account.recover_message(message, signature=signature)
         if recovered_address.lower() == address.lower():
             conn = sqlite3.connect("users.db")
@@ -644,15 +649,17 @@ def login_metamask():
             c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (address,))
             user_data = c.fetchone()
             if not user_data:
-                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))  # Dummy password for MetaMask users
+                # New user: insert into database with dummy password for MetaMask
+                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))
                 conn.commit()
                 user = User(address)
             else:
+                # Existing user: load their data
                 user = User(user_data[0], user_data[1], user_data[2], user_data[3])
             login_user(user)
             conn.close()
             return jsonify({"success": True, "address": address})
-        return jsonify({"error": "Invalid signature"}), 401  # Signature doesnt match
+        return jsonify({"error": "Invalid signature"}), 401  # Signature doesn't match
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
 

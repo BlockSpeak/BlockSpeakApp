@@ -1,3 +1,4 @@
+// useAuth.jsx
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -45,7 +46,7 @@ export default function useAuth() {
     setLoginMessage('');
 
     if (!window.ethereum) {
-      setLoginMessage('MetaMask not detected. Please install or open the MetaMask app.');
+      setLoginMessage('MetaMask not detected. Please open this page in the MetaMask app.');
       if (isMobile) {
         window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
       }
@@ -56,20 +57,22 @@ export default function useAuth() {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
 
-      // Secure Nonce Signing for Authentication
-      const nonceRes = await fetch(`${BASE_URL}/nonce`, { credentials: 'include' });
-      const nonce = await nonceRes.text();
+      // Generate a random nonce on the client-side
+      const nonce = Math.random().toString(36).substring(2, 15); // Simple random string
+      const message = `Log in to BlockSpeak with nonce: ${nonce}`;
+
+      // Sign the message with MetaMask
       const signature = await window.ethereum.request({
         method: 'personal_sign',
-        params: [`Log in to BlockSpeak: ${nonce}`, address],
+        params: [message, address],
       });
 
-      // Verify Signature with Backend
+      // Send address, signature, and nonce to the backend
       const response = await fetch(`${BASE_URL}/login/metamask`, {
         method: 'POST',
-        credentials: 'include',
+        credentials: 'include', // Keep for session management after login
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature }),
+        body: JSON.stringify({ address, signature, nonce }),
       });
 
       if (response.ok) {
@@ -80,7 +83,9 @@ export default function useAuth() {
         return true;
       }
 
-      throw new Error('Login unsuccessful, server rejected authentication.');
+      const data = await response.json();
+      setLoginMessage(data.error || 'Login failed');
+      return false;
     } catch (error) {
       if (error.code === 4001) {
         setLoginMessage('Login cancelled. Please retry.');
