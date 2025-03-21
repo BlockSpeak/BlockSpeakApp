@@ -182,14 +182,15 @@ function Subscribe({ account, subscription, setSubscription }) {
       );
     }
     return (
-      <div className="mt-2 flex space-x-2">
-        <button
+      <div className="mt-2 flex justify-center"> {/* Changed from space-x-2 to justify-center for single button */}
+        {/* Commented out Pay with Card button to disable Stripe payments temporarily */}
+        {/* <button
           onClick={() => handleStripeSubscribe(plan)}
           className="bg-primary hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
           disabled={isLoading}
         >
           Pay with Card
-        </button>
+        </button> */}
         <button
           onClick={() => handleEthSubscribe(plan)}
           className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
