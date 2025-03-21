@@ -2,10 +2,10 @@
 // Purpose: Centralizes routing and layout for BlockSpeak, rendering navigation and page content.
 // Passes authentication state and functions to child components like Subscribe and Success.
 
-import React, { useState, useEffect } from 'react'; // Add useState for hamburger menu
+import React, { useState, useEffect } from 'react';
 import { Link, Routes, Route, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
-import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline'; // Import icons
+import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import Home from './Home';
 import Dashboard from './Dashboard';
 import Subscribe from './Subscribe';
@@ -32,9 +32,8 @@ function AppContent({
   logout,
 }) {
   const navigate = useNavigate();
-  const [isMenuOpen, setIsMenuOpen] = useState(false); // State for hamburger menu
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Redirect to dashboard if logged in and on home page
   useEffect(() => {
     if (account && window.location.pathname === '/') {
       navigate('/dashboard');
@@ -43,7 +42,6 @@ function AppContent({
 
   return (
     <div className="flex flex-col min-h-screen bg-dark">
-      {/* Set default SEO tags for the entire app */}
       <Helmet>
         <title>BlockSpeak - Blockchain Tools & Smart Contracts</title>
         <meta
@@ -52,20 +50,20 @@ function AppContent({
         />
       </Helmet>
 
-      <nav className="bg-gray-800 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0 text-center sm:text-left">
-        <div className="flex justify-between items-center w-full sm:w-auto">
+      <nav className="bg-gray-800 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 lg:gap-0 text-center lg:text-left">
+        <div className="flex justify-between items-center w-full lg:w-auto">
           <Link to="/">
             <img
               src="/blockspeakvert.svg"
               alt="Block Speak Vertical Logo"
-              className="h-16 mx-auto sm:mx-0 transition-transform duration-200 hover:scale-105"
+              className="h-16 mx-auto lg:mx-0 transition-transform duration-200 hover:scale-105"
             />
           </Link>
 
           {/* Hamburger Button (Mobile Only) */}
           <button
-            type="button" // Add type="button" to avoid form submission behavior
-            className="sm:hidden text-white"
+            type="button"
+            className="lg:hidden text-white" // Changed sm:hidden to lg:hidden
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
             {isMenuOpen ? (
@@ -77,7 +75,7 @@ function AppContent({
         </div>
 
         {/* Desktop Navigation */}
-        <div className="hidden sm:flex sm:flex-row sm:justify-center gap-4 sm:gap-0 sm:space-x-6 mt-4 sm:mt-0">
+        <div className="hidden lg:flex lg:flex-row lg:justify-center gap-4 lg:gap-0 lg:space-x-6 mt-4 lg:mt-0"> {/* Changed sm:flex to lg:flex */}
           <Link to="/" className="text-primary hover:text-purple-400 text-lg py-2">Home</Link>
           {account && (
             <Link to="/dashboard" className="text-primary hover:text-purple-400 text-lg py-2">
@@ -102,7 +100,7 @@ function AppContent({
 
         {/* Mobile Menu (Visible when hamburger is clicked) */}
         {isMenuOpen && (
-          <div className="sm:hidden mt-4 space-y-2">
+          <div className="lg:hidden mt-4 space-y-2"> {/* Changed sm:hidden to lg:hidden */}
             <Link
               to="/"
               className="block text-primary hover:text-purple-400 text-lg py-2"

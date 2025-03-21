@@ -9,18 +9,32 @@ import axios from 'axios';
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
 
 export default function useAuth() {
-  // State for the connected account, subscription status, and login feedback message
   const [account, setAccount] = useState(localStorage.getItem('account') || null);
   const [subscription, setSubscription] = useState('free');
   const [loginMessage, setLoginMessage] = useState('');
+  const [isMobile, setIsMobile] = useState(false); // Added for mobile detection
 
-  // Login function: Connects MetaMask, signs a nonce, and authenticates with the backend
+  // Detect mobile devices on mount
+  useEffect(() => {
+    const { userAgent } = navigator;
+    setIsMobile(/android|iphone|ipad|ipod/i.test(userAgent));
+  }, []);
+
   const loginWithMetaMask = async () => {
-    setLoginMessage(''); // Clear any previous message
+    setLoginMessage('');
+    console.log('Starting MetaMask login...');
+    console.log('window.ethereum exists:', !!window.ethereum);
+    console.log('User Agent:', navigator.userAgent);
+
     if (!window.ethereum) {
-      setLoginMessage('Please install MetaMask!');
-      return false; // Early return if MetaMask isn�t installed
+      setLoginMessage('MetaMask not detected. Please install or open the MetaMask app.');
+      console.log('MetaMask not detected');
+      if (isMobile) {
+        window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
+      }
+      return false;
     }
+
     try {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
@@ -38,10 +52,10 @@ export default function useAuth() {
       });
       if (response.ok) {
         setAccount(address);
-        localStorage.setItem('account', address); // Persist account in localStorage
+        localStorage.setItem('account', address);
         const homeData = await axios.get(`${BASE_URL}/api/`, { withCredentials: true });
-        setSubscription(homeData.data.subscription); // Update subscription status
-        return true; // Login successful
+        setSubscription(homeData.data.subscription);
+        return true;
       }
       throw new Error('Login failed');
     } catch (error) {
@@ -51,11 +65,10 @@ export default function useAuth() {
         setLoginMessage('Login failed due to an unexpected error!');
         console.error('Login error:', error);
       }
-      return false; // Login failed
+      return false;
     }
   };
 
-  // Logout function: Clears session on backend and resets local state
   const logout = async () => {
     try {
       await axios.get(`${BASE_URL}/api/logout`, { withCredentials: true });
@@ -64,22 +77,19 @@ export default function useAuth() {
       setSubscription('free');
     } catch (error) {
       console.error('Logout error:', error);
-      // Ensure state is cleared even if the backend request fails
       setAccount(null);
       localStorage.removeItem('account');
       setSubscription('free');
     }
   };
 
-  // Effect to restore session on page load
   useEffect(() => {
     const restoreSession = async () => {
       const storedAccount = localStorage.getItem('account');
       if (!storedAccount) {
-        // No account stored, assume user isn�t logged in
         setSubscription('free');
         setAccount(null);
-        return; // Skip API call to avoid 401 error
+        return;
       }
 
       try {
@@ -87,10 +97,10 @@ export default function useAuth() {
         const { subscription: subStatus } = response.data;
         setSubscription(subStatus);
         if (subStatus !== 'free') {
-          setAccount(storedAccount); // Restore account if subscription is active
+          setAccount(storedAccount);
         } else {
           setAccount(null);
-          localStorage.removeItem('account'); // Clear if no active subscription
+          localStorage.removeItem('account');
         }
       } catch (error) {
         console.error('Failed to restore session:', error);
@@ -100,10 +110,8 @@ export default function useAuth() {
       }
     };
     restoreSession();
-  }, []); // Empty dependency array: Runs once on mount
+  }, []);
 
-  // Return authentication state and functions for use in components
-  // Added setSubscription to the return object to fix TypeError in Subscribe.jsx
   return {
     account,
     setAccount,

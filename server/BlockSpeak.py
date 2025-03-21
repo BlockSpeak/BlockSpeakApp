@@ -472,14 +472,12 @@ def get_coin_graph(coin_id):
         graph_data = {"dates": dates, "prices": prices}
         session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
         return graph_data
-    except Exception as e:
-        app.logger.error(f"CoinCap graph API failed for {coin_id}: {str(e)}")
-        now = datetime.now(timezone.utc)
-        dates = [(now - timedelta(days=x)).strftime("%Y-%m-%d") for x in range(7)][::-1]
-        prices = [0] * 7
-        graph_data = {"dates": dates, "prices": prices}
-        session[cache_key] = {"data": graph_data, "timestamp": datetime.now(timezone.utc)}
-        return graph_data
+    except requests.RequestException as e:
+        app.logger.error(f"Graph API request failed for {coin_id}: {str(e)}")
+        return jsonify({"error": f"Failed to fetch price data for {coin_id}"}), 500
+    except ValueError:
+        app.logger.error(f"Graph API returned invalid JSON for {coin_id}")
+        return jsonify({"error": f"Invalid response from price API for {coin_id}"}), 500
 
 def predict_price(coin, days):
     # Predicts future price based on 30-day trend, not implemented yet as a future feature!
