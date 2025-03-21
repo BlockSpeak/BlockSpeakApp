@@ -93,12 +93,17 @@ PRO_PLAN_ETH = 0.025    # About $50 in test mode
 
 # Set up Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")  # Ensure this is set in .env
+app.secret_key = os.getenv("SECRET_KEY")  # Must be set in .env
 
 # Determine environment
 APP_ENV = os.getenv("APP_ENV", "development")
 
-# Session configuration
+# Session configuration (set before Session(app))
+app.config['SESSION_COOKIE_NAME'] = 'blockspeak_session'
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = "None"
+app.config['SESSION_COOKIE_SECURE'] = True  # Set to False for local non-HTTPS testing
+
 if APP_ENV == "production":
     app.config['SESSION_TYPE'] = 'redis'
     app.config['SESSION_REDIS'] = Redis(
@@ -107,22 +112,15 @@ if APP_ENV == "production":
         password=os.getenv('REDIS_PASSWORD')
     )
 else:
-    # Development: Use Flask's built-in in-memory sessions
-    app.config['SESSION_TYPE'] = 'null'  # No external session storage in dev
+    # Development: Use Flask's built-in cookie-based sessions
+    pass  # No SESSION_TYPE set, defaults to Flask's signed cookies
 
-# Common session settings
-app.config['SESSION_COOKIE_NAME'] = 'blockspeak_session'  # Explicitly set to avoid AttributeError
-app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_COOKIE_SAMESITE'] = "None"
-app.config['SESSION_COOKIE_SECURE'] = True  # Set to False for local non-HTTPS testing
-
-# Initialize session (only for production with flask_session)
-if APP_ENV == "production":
-    Session(app)
+# Initialize session
+Session(app)
 
 # CORS setup
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
-logging.basicConfig(level=logging.INFO)  # Log info for debugging to see requests in terminal
+logging.basicConfig(level=logging.INFO)
 
 # Load API keys and Stripe secrets from .env
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")  # For blockchain connections on Mainnet
