@@ -93,30 +93,32 @@ PRO_PLAN_ETH = 0.025    # About $50 in test mode
 
 # Set up Flask app
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY")  # Required for sessions (both Flask and flask_session)
+app.secret_key = os.getenv("SECRET_KEY")  # Ensure this is set in .env
 
 # Determine environment
 APP_ENV = os.getenv("APP_ENV", "development")
 
 # Session configuration
 if APP_ENV == "production":
-    # Import flask_session only in production to avoid unnecessary dependency in dev
-    from flask_session import Session
     app.config['SESSION_TYPE'] = 'redis'
     app.config['SESSION_REDIS'] = Redis(
         host=os.getenv('REDIS_HOST'),
         port=os.getenv('REDIS_PORT'),
         password=os.getenv('REDIS_PASSWORD')
     )
-    Session(app)  # Initialize flask_session for Redis
 else:
-    # Development: Use Flask's built-in in-memory sessions (no flask_session)
-    pass
+    # Development: Use Flask's built-in in-memory sessions
+    app.config['SESSION_TYPE'] = 'null'  # No external session storage in dev
 
 # Common session settings
+app.config['SESSION_COOKIE_NAME'] = 'blockspeak_session'  # Explicitly set to avoid AttributeError
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = "None"
-app.config['SESSION_COOKIE_SECURE'] = True  # Set to False if testing without HTTPS locally
+app.config['SESSION_COOKIE_SECURE'] = True  # Set to False for local non-HTTPS testing
+
+# Initialize session (only for production with flask_session)
+if APP_ENV == "production":
+    Session(app)
 
 # CORS setup
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
