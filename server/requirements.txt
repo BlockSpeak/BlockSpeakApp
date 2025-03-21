@@ -10,3 +10,5 @@ werkzeug       # Locks passwords with secret codes so they are safe in the datab
 web3           # Connects to blockchains (Ethereum/Solana) to deploy contracts and check wallets
 flask-cors     # Lets the React frontend talk to the Flask backend without security blocks
 python-dotenv  # Loads secret keys (like API keys) from a hidden LOLUBUNNY file so the app can use them
+flask-session==0.4.0
+redis==4.3.4

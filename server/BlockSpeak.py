@@ -42,6 +42,8 @@ from werkzeug.security import generate_password_hash  # Secures passwords
 from werkzeug.security import check_password_hash  # Checks hashed passwords
 import random  # For randomizing titles and attributes
 from requests.exceptions import HTTPError
+from redis import Redis
+from flask_session import Session
 
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
@@ -80,6 +82,7 @@ elif NETWORK == "mainnet":  # connects to mainnet if not hardhat
 else:
     raise ValueError(f"Unsupported NETWORK: {NETWORK}")  # Oops, typo in .env? Crash with a message!
 
+
 # ETH payment address where users send ETH for subscriptions
 ETH_PAYMENT_ADDRESS = os.getenv("ETH_PAYMENT_ADDRESS")
 if not ETH_PAYMENT_ADDRESS:
@@ -88,16 +91,34 @@ if not ETH_PAYMENT_ADDRESS:
 BASIC_PLAN_ETH = 0.005  # About $10 in test mode
 PRO_PLAN_ETH = 0.025    # About $50 in test mode
 
-# Set up Flask app, this is our servers engine
-app = Flask(__name__)  # Creates the Flask app
-app.secret_key = os.getenv("SECRET_KEY")  # Secret for sessions to secure cookies, update in .env for prod
-app.config.update(
-    SESSION_TYPE="memory",  # Store sessions in memory, good for testing
-    SESSION_PERMANENT=False,  # Sessions dont last forever, log out when browser closes
-    SESSION_COOKIE_SAMESITE="None",  # Allow cross-origin cookies, React frontend needs this
-    SESSION_COOKIE_SECURE=True  # Only HTTPS cookies, secure in production
-)
-# CORS: Lets our React app at blockspeak.co or localhost:3000 for testing talk to the backend
+# Set up Flask app
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY")  # Required for sessions (both Flask and flask_session)
+
+# Determine environment
+APP_ENV = os.getenv("APP_ENV", "development")
+
+# Session configuration
+if APP_ENV == "production":
+    # Import flask_session only in production to avoid unnecessary dependency in dev
+    from flask_session import Session
+    app.config['SESSION_TYPE'] = 'redis'
+    app.config['SESSION_REDIS'] = Redis(
+        host=os.getenv('REDIS_HOST'),
+        port=os.getenv('REDIS_PORT'),
+        password=os.getenv('REDIS_PASSWORD')
+    )
+    Session(app)  # Initialize flask_session for Redis
+else:
+    # Development: Use Flask's built-in in-memory sessions (no flask_session)
+    pass
+
+# Common session settings
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_COOKIE_SAMESITE'] = "None"
+app.config['SESSION_COOKIE_SECURE'] = True  # Set to False if testing without HTTPS locally
+
+# CORS setup
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
 logging.basicConfig(level=logging.INFO)  # Log info for debugging to see requests in terminal
 
@@ -1391,4 +1412,4 @@ if __name__ == "__main__":
     if "--cron" in sys.argv:
         add_bulk_blog_posts(new_posts_only=True, num_posts=1)
     else:
-        app.run(host="0.0.0.0", port=8080, debug=False)
+        app.run(host="0.0.0.0", port=8080, debug=True)
