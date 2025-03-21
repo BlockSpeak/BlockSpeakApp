@@ -1332,18 +1332,24 @@ def home_api():
 @app.route("/api/coin_graph/<coin_id>")
 def get_coin_graph(coin_id):
     """Fetches 7-day price history for a coin"""
+    coin_id = coin_id.lower()  # Ensure lowercase
     url = f"https://api.coincap.io/v2/assets/{coin_id}/history?interval=d1"
     try:
-        response = requests.get(url).json()
-        if "data" not in response:
-            return jsonify({"error": "No graph data available"}), 500
+        response = requests.get(url)
+        response.raise_for_status()  # Raise exception for 4xx/5xx errors
+        data = response.json()  # Parse JSON
+        if "data" not in data or not data["data"]:
+            return jsonify({"error": f"No graph data available for {coin_id}"}), 500
         return jsonify({
-            "dates": [point["time"] for point in response["data"]],
-            "prices": [float(point["priceUsd"]) for point in response["data"]]
+            "dates": [point["time"] for point in data["data"]],
+            "prices": [float(point["priceUsd"]) for point in data["data"]]
         })
-    except Exception as e:
-        app.logger.error(f"Graph API failed: {str(e)}")
-        return jsonify({"error": "Failed to fetch price data"}), 500
+    except requests.RequestException as e:
+        app.logger.error(f"Graph API request failed for {coin_id}: {str(e)}")
+        return jsonify({"error": f"Failed to fetch price data for {coin_id}"}), 500
+    except ValueError:
+        app.logger.error(f"Graph API returned invalid JSON for {coin_id}")
+        return jsonify({"error": f"Invalid response from price API for {coin_id}"}), 500
 
 
 @app.route("/api/prices", methods=["GET"])
