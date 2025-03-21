@@ -1,20 +1,14 @@
-// hooks/useAuth.js
-// Purpose: Custom hook to manage authentication state and actions (login/logout) using MetaMask.
-// Now uses a default export to satisfy ESLint's 'prefer-default-export' rule.
-
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Base URL switches between local development and production environments
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
 
 export default function useAuth() {
   const [account, setAccount] = useState(localStorage.getItem('account') || null);
   const [subscription, setSubscription] = useState('free');
   const [loginMessage, setLoginMessage] = useState('');
-  const [isMobile, setIsMobile] = useState(false); // Added for mobile detection
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Detect mobile devices on mount
   useEffect(() => {
     const { userAgent } = navigator;
     setIsMobile(/android|iphone|ipad|ipod/i.test(userAgent));
@@ -24,12 +18,14 @@ export default function useAuth() {
     setLoginMessage('');
     console.log('Starting MetaMask login...');
     console.log('window.ethereum exists:', !!window.ethereum);
+    console.log('window.ethereum details:', window.ethereum);
     console.log('User Agent:', navigator.userAgent);
 
     if (!window.ethereum) {
       setLoginMessage('MetaMask not detected. Please install or open the MetaMask app.');
       console.log('MetaMask not detected');
       if (isMobile) {
+        console.log('Redirecting to MetaMask app...');
         window.location.href = 'https://metamask.app.link/dapp/blockspeak.co';
       }
       return false;
@@ -48,7 +44,7 @@ export default function useAuth() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, signature }),
+        body: JSON.stringify({ address, signature, nonce }), // Include nonce
       });
       if (response.ok) {
         setAccount(address);
@@ -57,12 +53,13 @@ export default function useAuth() {
         setSubscription(homeData.data.subscription);
         return true;
       }
-      throw new Error('Login failed');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Login failed');
     } catch (error) {
       if (error.code === 4001) {
         setLoginMessage('Login cancelled. Please try again.');
       } else {
-        setLoginMessage('Login failed due to an unexpected error!');
+        setLoginMessage(`Login failed: ${error.message}`);
         console.error('Login error:', error);
       }
       return false;
