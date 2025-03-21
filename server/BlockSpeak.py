@@ -98,25 +98,15 @@ app.secret_key = os.getenv("SECRET_KEY")  # Must be set in .env
 # Determine environment
 APP_ENV = os.getenv("APP_ENV", "development")
 
-# Session configuration (set before Session(app))
+
+# Session configuration: Use Flask's default cookie-based sessions
 app.config['SESSION_COOKIE_NAME'] = 'blockspeak_session'
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_COOKIE_SAMESITE'] = "None"
 app.config['SESSION_COOKIE_SECURE'] = True  # Set to False for local non-HTTPS testing
 
-if APP_ENV == "production":
-    app.config['SESSION_TYPE'] = 'redis'
-    app.config['SESSION_REDIS'] = Redis(
-        host=os.getenv('REDIS_HOST'),
-        port=os.getenv('REDIS_PORT'),
-        password=os.getenv('REDIS_PASSWORD')
-    )
-else:
-    # Development: Use Flask's built-in cookie-based sessions
-    pass  # No SESSION_TYPE set, defaults to Flask's signed cookies
+# No flask_session initialization; Flask handles sessions natively
 
-# Initialize session
-Session(app)
 
 # CORS setup
 CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
