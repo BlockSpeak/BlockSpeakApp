@@ -143,7 +143,6 @@ def apply_csp(response):
         "https://blockspeak.disqus.com "
         "https://c.disquscdn.com "
         "https://disqus.com "
-        "https://metamask-sdk.api.cx.metamask.io "
         "https://links.services.disqus.com;"
         "img-src 'self' data: "
         "http://127.0.0.1:8080 "
@@ -486,6 +485,13 @@ def predict_price(coin, days):
     # Predicts future price based on 30-day trend, not implemented yet as a future feature!
     pass
 
+
+@app.route("/api/prices", methods=["GET"])
+def get_prices():
+    top_coins = get_top_coins()
+    return jsonify({"top_coins": top_coins})
+
+
 @app.route("/api/blog-posts", methods=["GET"])
 def get_blog_posts():
     """API endpoint to fetch all blog posts with pagination."""
@@ -615,7 +621,6 @@ def login():
         return jsonify({"success": True, "message": "Logged in!", "email": email})
     return jsonify({"error": "Wrong credentials"}), 400  # Bad email or password
 
-
 @app.route("/api/logout")
 @login_required
 def logout():
@@ -631,17 +636,13 @@ def login_metamask():
     data = request.json
     address = data.get("address")
     signature = data.get("signature")
-    nonce = data.get("nonce")  # Get nonce from request body instead of session
-
-    # Check if all required fields are present
-    if not address or not signature or not nonce:
-        return jsonify({"error": "Missing address, signature, or nonce"}), 400
-
-    # Reconstruct the message exactly as it will be signed on the frontend
-    message = encode_defunct(text=f"Log in to BlockSpeak with nonce: {nonce}")
-
+    if not address or not signature:
+        return jsonify({"error": "Missing data"}), 400
+    nonce = session.pop("nonce", None)
+    if not nonce:
+        return jsonify({"error": "Invalid nonce"}), 400
+    message = encode_defunct(text=f"Log in to BlockSpeak: {nonce}")
     try:
-        # Verify the signature matches the provided address
         recovered_address = w3.eth.account.recover_message(message, signature=signature)
         if recovered_address.lower() == address.lower():
             conn = sqlite3.connect("users.db")
@@ -649,17 +650,15 @@ def login_metamask():
             c.execute("SELECT email, subscription, stripe_customer_id, history FROM users WHERE email = ?", (address,))
             user_data = c.fetchone()
             if not user_data:
-                # New user: insert into database with dummy password for MetaMask
-                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))
+                c.execute("INSERT INTO users (email, password) VALUES (?, ?)", (address, "metamask"))  # Dummy password for MetaMask users
                 conn.commit()
                 user = User(address)
             else:
-                # Existing user: load their data
                 user = User(user_data[0], user_data[1], user_data[2], user_data[3])
             login_user(user)
             conn.close()
             return jsonify({"success": True, "address": address})
-        return jsonify({"error": "Invalid signature"}), 401  # Signature doesn't match
+        return jsonify({"error": "Invalid signature"}), 401  # Signature doesnt match
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
 
@@ -1025,10 +1024,9 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
                 f"- An H1 heading (the title itself) using <h1> tags, e.g., <h1>{title}</h1>\n"
                 f"- At least 2 H2 subheadings using <h2> tags, e.g., <h2><strong>Subheading</strong></h2>\n"
                 f"- At least 3 H3 sub-subheadings under the H2s using <h3> tags, e.g., <h3>Sub-subheading</h3>\n"
-                f"- Use <p> tags for paragraphs with clear line breaks between sections.\n"
                 f"- Include a placeholder for an inline image halfway through with the text '[Inline Image Placeholder]'\n"
-                f"- Add variety: use <ul><li> tags for bullet points and a <blockquote><p>Quote</p></blockquote> for emphasis.\n"
                 f"- Do NOT use markdown syntax like ### for headings; use HTML tags instead.\n"
+                f"- Add variety: use <ul><li> tags for bullet points and a <blockquote><p>Quote</p></blockquote> for emphasis.\n"
                 f"- Ensure paragraphs are wrapped in <p> tags, e.g., <p>Paragraph text</p>\n"
                 f"- Bold key phrases or headings where appropriate using <strong> or <b> tags to add flair.\n"
                 f"Include a {150 if not is_premium else 300}-character teaser description and 5 SEO keywords. "
@@ -1330,33 +1328,10 @@ def home_api():
     })
 
 @app.route("/api/coin_graph/<coin_id>")
-def get_coin_graph(coin_id):
-    """Fetches 7-day price history for a coin"""
-    coin_id = coin_id.lower()  # Ensure lowercase
-    url = f"https://api.coincap.io/v2/assets/{coin_id}/history?interval=d1"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise exception for 4xx/5xx errors
-        data = response.json()  # Parse JSON
-        if "data" not in data or not data["data"]:
-            return jsonify({"error": f"No graph data available for {coin_id}"}), 500
-        return jsonify({
-            "dates": [point["time"] for point in data["data"]],
-            "prices": [float(point["priceUsd"]) for point in data["data"]]
-        })
-    except requests.RequestException as e:
-        app.logger.error(f"Graph API request failed for {coin_id}: {str(e)}")
-        return jsonify({"error": f"Failed to fetch price data for {coin_id}"}), 500
-    except ValueError:
-        app.logger.error(f"Graph API returned invalid JSON for {coin_id}")
-        return jsonify({"error": f"Invalid response from price API for {coin_id}"}), 500
-
-
-@app.route("/api/prices", methods=["GET"])
-def get_prices():
-    top_coins = get_top_coins()
-    return jsonify({"top_coins": top_coins})
-
+def coin_graph(coin_id):
+    # Returns 7-day price graph data for a coin
+    # Used for the dashboard graph
+    return jsonify(get_coin_graph(coin_id))
 
 @app.route("/api/update_account", methods=["POST"])
 @login_required
