@@ -102,11 +102,26 @@ function HowItWorks() {
           className="mt-8 mx-auto max-w-full"
         />
 
-        {/* Internal Linking */}
-        <div className="mt-8 text-center">
-          <Link to="/dashboard" className="text-primary hover:underline">Explore Your Dashboard</Link> |
-          <Link to="/faq" className="text-primary hover:underline">Read Our FAQ</Link> |
-          <Link to="/blog" className="text-primary hover:underline">Blockchain Blog</Link>
+        {/* Internal Linking: Enhanced with styled buttons for better UX */}
+        <div className="mt-8 max-w-2xl mx-auto flex flex-col space-y-4 lg:flex-row lg:space-x-4 lg:space-y-0 items-center">
+          <Link
+            to="/dashboard"
+            className="w-full lg:w-auto flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors duration-200 text-center"
+          >
+            Explore Your Dashboard
+          </Link>
+          <Link
+            to="/faq"
+            className="w-full lg:w-auto flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors duration-200 text-center"
+          >
+            Read Our FAQ
+          </Link>
+          <Link
+            to="/blog"
+            className="w-full lg:w-auto flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors duration-200 text-center"
+          >
+            Blockchain Blog
+          </Link>
         </div>
 
         {/* FAQ Section */}

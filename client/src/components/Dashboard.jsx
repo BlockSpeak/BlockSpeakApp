@@ -329,7 +329,7 @@ function Dashboard({ account, logout, subscription }) {
           <div className="bg-gray-800 p-4 rounded mb-4">
             <h2 className="text-xl font-bold text-primary">What is a DAO?</h2>
             <p className="text-accent">
-              A Decentralized Autonomous Organization is like an online club you control with blockchain!
+              It is an online club you control with blockchain! Start now, it is so easy.
             </p>
             <p className="text-accent mt-2">
               Just pick a name and describe what your group is for!
