@@ -1,6 +1,7 @@
 // Dashboard.jsx
 // Purpose: Main user interface after login, displaying forms for smart contracts, DAOs, and crypto queries.
-// Features wallet analytics, price graphs, top coins, and news. Includes DAO voting: join, propose, and vote on ideas.
+// Features: Price graphs, top coins, news, and DAO voting (join, propose, vote on ideas).
+// Note: Wallet analytics is commented out as it’s not applicable with MetaMask-only authentication.
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -14,7 +15,7 @@ axios.defaults.withCredentials = true;
 // Register ChartJS components to enable graph rendering (e.g., scales, lines, tooltips)
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-// Base URL switches between local testing and production environments
+// Base URL: Switches between local testing and production environments
 const BASE_URL = window.location.hostname === 'localhost' ? 'http://127.0.0.1:8080' : 'https://blockspeak.onrender.com';
 
 // Array of coin options for the dropdown and graph, with IDs, labels, and colors
@@ -25,7 +26,8 @@ const coinOptions = [
   { id: 'solana', label: 'Solana (SOL)', color: '#9b59b6' },
 ];
 
-// Dashboard component receives account, logout function, and subscription status as props
+// Main Dashboard component: Displays the user interface after login
+// Props: account (user’s wallet address), logout (function to log out), subscription (user’s plan: free, basic, pro)
 function Dashboard({ account, logout, subscription }) {
   const navigate = useNavigate(); // Hook for redirecting to other pages (e.g., login or subscribe)
   const location = useLocation(); // Hook to get navigation state (e.g., selected coin from previous page)
@@ -34,7 +36,8 @@ function Dashboard({ account, logout, subscription }) {
   const [selectedCoin, setSelectedCoin] = useState(location.state?.selectedCoin || 'bitcoin'); // Coin selected for price graph
   const [contractRequest, setContractRequest] = useState(''); // User input for smart contract creation
   const [contractResult, setContractResult] = useState(''); // Result message from contract creation
-  const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, transactions, tokens)
+  // Commented out: Wallet analytics state (not needed with MetaMask-only auth)
+  // const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, transactions, tokens)
   const [news, setNews] = useState([]); // Array of latest crypto news items
   const [query, setQuery] = useState(''); // User input for crypto-related questions
   const [queryResult, setQueryResult] = useState(''); // Answer to the crypto query from backend
@@ -52,14 +55,16 @@ function Dashboard({ account, logout, subscription }) {
   const [graphLoading, setGraphLoading] = useState(true); // Loading state for price graph
   const [graphError, setGraphError] = useState(null); // Error message for graph loading failures
 
-  // Automatically pre-fill the contract request input when a coin is selected
+  // Effect: Pre-fills the contract request input with a default value based on selected coin
   useEffect(() => {
     if (selectedCoin) {
       setContractRequest(`Send 1 ETH for ${selectedCoin}`);
     }
   }, [selectedCoin]);
 
-  // Check if user is logged in and subscribed; redirect if not
+  // Function: Checks if user is logged in and subscribed, redirects if not
+  // Params: returnPath (string) - where to redirect after login, defaults to '/dashboard'
+  // Returns: boolean - true if redirected, false if user can proceed
   const requireLoginOrSubscription = (returnPath = '/dashboard') => {
     if (!account) {
       navigate(`/login?return=${returnPath}`); // Redirect to login if no account
@@ -72,9 +77,9 @@ function Dashboard({ account, logout, subscription }) {
     return false; // Proceed if logged in and subscribed
   };
 
-  // Load initial dashboard data (news, top coins, analytics, graph) when account or selectedCoin changes
+  // Effect: Loads initial dashboard data (news, top coins, graph) when account or selectedCoin changes
   useEffect(() => {
-    let mounted = true; // Flag to prevent state updates after unmount
+    let mounted = true; // Flag to prevent state updates after component unmounts
     setGraphLoading(true); // Start loading graph
     setGraphError(null); // Clear previous graph errors
 
@@ -82,22 +87,24 @@ function Dashboard({ account, logout, subscription }) {
     axios.get(`${BASE_URL}/api/`)
       .then((res) => {
         if (mounted) {
-          setNews(res.data.news_items);
-          setTopCoins(res.data.top_coins);
+          setNews(res.data.news_items); // Update news state
+          setTopCoins(res.data.top_coins); // Update top coins state
         }
       })
       .catch((err) => console.error('Home data error:', err));
 
     if (account) {
-      // Fetch wallet analytics for the logged-in user
+      // Commented out: Wallet analytics fetch (not applicable with MetaMask-only auth)
+      /*
       axios.get(`${BASE_URL}/api/analytics/${account}`, { withCredentials: true })
         .then((res) => { if (mounted) setAnalytics(res.data); })
         .catch((err) => {
           console.error('Analytics error:', err);
           if (mounted) setAnalytics({ error: 'Analytics unavailable' });
         });
+      */
 
-      // Fetch graph data for the selected coin directly inside useEffect
+      // Function: Fetches graph data for the selected coin
       const fetchGraph = async () => {
         setGraphLoading(true); // Indicate graph is loading
         setGraphError(null); // Clear any previous errors
@@ -126,10 +133,12 @@ function Dashboard({ account, logout, subscription }) {
       };
       fetchGraph(); // Execute the graph fetching logic
     }
-    return () => { mounted = false; }; // Cleanup to prevent memory leaks
+    // Cleanup function to prevent memory leaks
+    return () => { mounted = false; }; // Set mounted to false when component unmounts
   }, [account, selectedCoin]); // Dependencies: re-run when account or selectedCoin changes
 
-  // Create a smart contract by sending the request to the backend
+  // Function: Creates a smart contract by sending the request to the backend
+  // Params: e (event) - Form submission event
   const createContract = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return; // Check login/subscription
@@ -146,7 +155,8 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Create a DAO by sending name and description to the backend
+  // Function: Creates a DAO by sending name and description to the backend
+  // Params: e (event) - Form submission event
   const createDao = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -165,7 +175,8 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Join a DAO by sending its address to the backend
+  // Function: Joins a DAO by sending its address to the backend
+  // Params: e (event) - Form submission event
   const joinDao = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -184,7 +195,8 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Create a proposal for a DAO
+  // Function: Creates a proposal for a DAO
+  // Params: e (event) - Form submission event
   const createProposal = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -205,7 +217,8 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Vote on a DAO proposal
+  // Function: Votes on a DAO proposal
+  // Params: proposalId (number) - ID of the proposal, voteChoice (boolean) - true for yes, false for no
   const voteOnProposal = async (proposalId, voteChoice) => {
     if (requireLoginOrSubscription()) return;
     if (!daoAddress) return alert('Please enter a DAO address!');
@@ -223,7 +236,7 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Fetch all proposals for the current DAO
+  // Function: Fetches all proposals for the current DAO
   const fetchProposals = async () => {
     if (!daoAddress || requireLoginOrSubscription()) return;
     try {
@@ -239,7 +252,8 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Ask a crypto-related question and get an answer from the backend
+  // Function: Asks a crypto-related question and gets an answer from the backend
+  // Params: e (event) - Form submission event
   const askQuery = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -256,7 +270,7 @@ function Dashboard({ account, logout, subscription }) {
     }
   };
 
-  // Welcome banner for paid users (Basic or Pro plans)
+  // Component: Displays a welcome banner for paid users (Basic or Pro plans)
   const welcomeBanner = subscription !== 'free' ? (
     <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-lg shadow-lg mb-6 text-center">
       <p className="text-lg text-white">
@@ -266,7 +280,7 @@ function Dashboard({ account, logout, subscription }) {
     </div>
   ) : null;
 
-  // Determine what to display in the graph section based on loading, error, or data
+  // Variable: Determines what to display in the graph section based on loading, error, or data
   let graphContent;
   if (graphLoading) {
     graphContent = <p className="text-accent">Loading graph...</p>;
@@ -280,7 +294,7 @@ function Dashboard({ account, logout, subscription }) {
     graphContent = <p className="text-accent">No graph data available.</p>;
   }
 
-  // Render the dashboard UI
+  // Render: Main dashboard UI layout
   return (
     <div className="bg-dark text-white min-h-screen p-4 overflow-hidden">
       {/* Header with welcome message */}
@@ -448,7 +462,8 @@ function Dashboard({ account, logout, subscription }) {
             )}
           </div>
 
-          {/* Wallet analytics display */}
+          {/* Commented out: Wallet analytics display (not applicable with MetaMask-only auth) */}
+          {/*
           {analytics && (
             <div className="bg-gray-800 p-4 rounded">
               <h2 className="text-xl font-bold text-primary">Wallet Analytics</h2>
@@ -463,6 +478,7 @@ function Dashboard({ account, logout, subscription }) {
               )}
             </div>
           )}
+          */}
         </div>
         <div>
           {/* Form to ask crypto-related questions */}

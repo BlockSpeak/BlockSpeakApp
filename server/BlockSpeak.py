@@ -42,8 +42,6 @@ from werkzeug.security import generate_password_hash  # Secures passwords
 from werkzeug.security import check_password_hash  # Checks hashed passwords
 import random  # For randomizing titles and attributes
 from requests.exceptions import HTTPError
-from redis import Redis
-from flask_session import Session
 
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
@@ -368,6 +366,7 @@ def get_news_items():
     app.logger.error("All RSS fetch attempts failed for both URLs.")
     return [{"title": "News unavailable, check back later!", "link": "#"}]  # Fallback if all feeds fail
 
+'''
 def get_wallet_analytics(address):
     # Gets wallet stats for Bitcoin, Ethereum, or Solana
     # Used for the analytics section on the dashboard
@@ -420,10 +419,11 @@ def get_wallet_analytics(address):
     else:
         return {"error": "Invalid wallet address"}
     return analytics
+'''
 
-def get_historical_balance(address, chain):
+# def get_historical_balance(address, chain):
     # Gets 30-day balance history for a wallet, not implemented yet as a future feature!
-    pass
+    # pass
 
 def get_top_coins():
     # Fetches top coins from CoinCap with caching
@@ -1161,6 +1161,7 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
 # add_bulk_blog_posts(new_posts_only=True) 
 
 
+'''
 @app.route("/api/analytics/<address>")
 @login_required
 def get_analytics(address):
@@ -1168,6 +1169,8 @@ def get_analytics(address):
     # Shows balance, transactions, etc., for the dashboard
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
+'''
+
 
 @app.route("/api/news")
 def get_news_api():
@@ -1175,36 +1178,86 @@ def get_news_api():
     # Simple endpoint for the news section
     return jsonify(get_news_items())
 
+
 @app.route("/api/query", methods=["POST"])
 @login_required
 def query():
     # Handles user questions about crypto
-    # Answers with analytics, prices, or ChatGPT based on the question
+    # Answers with price for price queries or ChatGPT with optional block size/price for general questions
     user_question = request.form.get("question", "").strip()
     normalized_question = normalize_question(user_question)
     history = current_user.history
-    if is_bitcoin_address(user_question) or is_wallet_address(user_question) or is_solana_address(user_question):
-        analytics = get_wallet_analytics(user_question)
-        answer = analytics["error"] if "error" in analytics else f"Wallet Analytics ({analytics['chain']}): Balance {analytics['balance']}"
-        wallet_data = {"address": user_question, "chain": analytics.get("chain")} if "error" not in analytics else None
-        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": wallet_data})
-    elif "price" in normalized_question:
+
+    # Helper function to get latest block size using Alchemy
+    def get_block_size(chain):
+        try:
+            if chain == "bitcoin":
+                # Bitcoin via Blockcypher (Alchemy doesnt natively support Bitcoin)
+                btc_url = f"https://api.blockcypher.com/v1/btc/main/blocks/{requests.get('https://api.blockcypher.com/v1/btc/main').json()['height']}"
+                block_data = requests.get(btc_url).json()
+                block_size = block_data.get("size", "N/A")
+                return f"Latest Bitcoin block size: {block_size} bytes"
+            elif chain == "ethereum":
+                eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+                payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": ["latest", True], "id": 1}
+                block_data = requests.post(eth_url, json=payload).json()
+                block_size = int(block_data["result"]["size"], 16)  # Convert hex to int
+                return f"Latest Ethereum block size: {block_size} bytes"
+            elif chain == "solana":
+                sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+                payload = {"jsonrpc": "2.0", "method": "getBlockHeight", "id": 1}
+                height = requests.post(sol_url, json=payload).json()["result"]
+                payload = {"jsonrpc": "2.0", "method": "getBlock", "params": [height, {"encoding": "json"}], "id": 1}
+                block_data = requests.post(sol_url, json=payload).json()
+                block_size = len(json.dumps(block_data["result"]))  # Approximate size in bytes
+                return f"Latest Solana block size: {block_size} bytes"
+            return "Unsupported chain"
+        except Exception as e:
+            app.logger.error(f"Block size fetch failed for {chain}: {str(e)}")
+            return f"Error fetching block size: {str(e)}"
+
+    if "price" in normalized_question:
         coin = "bitcoin" if "bitcoin" in user_question.lower() or "btc" in user_question.lower() else \
                "ethereum" if "ethereum" in user_question.lower() or "eth" in user_question.lower() else \
                "solana" if "solana" in user_question.lower() or "sol" in user_question.lower() else None
-        answer = f"Current {coin.capitalize()} price: ${get_crypto_price(coin)} USD." if coin else "Only BTC, ETH, SOL supported."
+        if coin:
+            price = get_crypto_price(coin)
+            answer = f"Current {coin.capitalize()} price: ${price} USD"
+        else:
+            answer = "Only BTC, ETH, SOL supported."
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     else:
         try:
-            response = client.chat.completions.create(model="gpt-4", messages=[{"role": "user", "content": f"Answer about crypto: {user_question}"}], max_tokens=100)
+            # Use ChatGPT for general questions, enhancing with block size or price if relevant
+            prompt = f"Answer this crypto question: {user_question}. If applicable, include the latest block size or current price using available data."
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=150
+            )
             answer = response.choices[0].message.content
+            # Fetch block size or price if mentioned in the response
+            if "block size" in answer.lower():
+                chain = "bitcoin" if "bitcoin" in user_question.lower() or "btc" in user_question.lower() else \
+                        "ethereum" if "ethereum" in user_question.lower() or "eth" in user_question.lower() else \
+                        "solana" if "solana" in user_question.lower() or "sol" in user_question.lower() else "ethereum"  # Default to Ethereum
+                answer += f"\n{get_block_size(chain)}"
+            if "price" in answer.lower() and "bitcoin" in user_question.lower():
+                answer += f"\nCurrent Bitcoin price: ${get_crypto_price('bitcoin')} USD"
+            elif "price" in answer.lower() and "ethereum" in user_question.lower():
+                answer += f"\nCurrent Ethereum price: ${get_crypto_price('ethereum')} USD"
+            elif "price" in answer.lower() and "solana" in user_question.lower():
+                answer += f"\nCurrent Solana price: ${get_crypto_price('solana')} USD"
         except Exception as e:
             answer = f"Error: {str(e)}"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+
     save_user_history(current_user.email, history)
     current_user.history = history[:3]
     return jsonify({"answer": answer, "question": user_question, "history": history[:3]})
 
+
+'''
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
@@ -1228,11 +1281,14 @@ def subscribe():
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe error: {str(e)}")
         return jsonify({"error": "Subscription failed"}), 500
+'''
+
 
 @app.route("/api/get_payment_address", methods=["GET"])
 def get_payment_address():
     """Return the ETH payment address for subscriptions."""
     return jsonify({"eth_payment_address": ETH_PAYMENT_ADDRESS}), 200
+
 
 @app.route("/api/subscription_status", methods=["GET"])
 @login_required
