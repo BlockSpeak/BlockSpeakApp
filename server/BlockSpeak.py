@@ -42,6 +42,8 @@ from werkzeug.security import generate_password_hash  # Secures passwords
 from werkzeug.security import check_password_hash  # Checks hashed passwords
 import random  # For randomizing titles and attributes
 from requests.exceptions import HTTPError
+from redis import Redis
+from flask_session import Session
 
 # Load .env to keep this file out of Git!
 # Our secrets like API keys and private keys live here, pointing to skillchain_contracts folder
@@ -366,7 +368,6 @@ def get_news_items():
     app.logger.error("All RSS fetch attempts failed for both URLs.")
     return [{"title": "News unavailable, check back later!", "link": "#"}]  # Fallback if all feeds fail
 
-'''
 def get_wallet_analytics(address):
     # Gets wallet stats for Bitcoin, Ethereum, or Solana
     # Used for the analytics section on the dashboard
@@ -419,11 +420,10 @@ def get_wallet_analytics(address):
     else:
         return {"error": "Invalid wallet address"}
     return analytics
-'''
 
-# def get_historical_balance(address, chain):
+def get_historical_balance(address, chain):
     # Gets 30-day balance history for a wallet, not implemented yet as a future feature!
-    # pass
+    pass
 
 def get_top_coins():
     # Fetches top coins from CoinCap with caching
@@ -675,41 +675,77 @@ def login_metamask():
 @login_required
 def create_contract():
     # Creates a smart contract based on user input
-    # Deploys a recurring payment contract if the request matches like "send 1 eth to 0x..."
+    # Deploys a recurring payment contract if the request matches like "send 1 eth to 0x..." or "send 1 ethereum to 0x..."
     contract_request = request.form.get("contract_request")
     if not contract_request:
-        return jsonify({"error": "No request"}), 400
+        return jsonify({"error": "No request provided"}), 400
+    
     w3_py = w3  # Use global w3 for Hardhat or Mainnet
     if not w3_py.is_connected():
         return jsonify({"error": "Blockchain not connected"}), 500
-    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email  # Hardhat default or user wallet
+    
+    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email
     sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
     if not sender_private_key:
         return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
-    match = re.search(r"send (\d+) eth to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+))?", contract_request, re.IGNORECASE)
-    if match:
-        amount, recipient, frequency = int(match.group(1)), match.group(2), match.group(3).lower() if match.group(3) else "once"
-        contract_path = "../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
-        try:
-            with open(contract_path) as f:
-                contract_data = json.load(f)
-        except FileNotFoundError:
-            return jsonify({"error": "Contract file missing"}), 500
-        contract = w3_py.eth.contract(abi=contract_data["abi"], bytecode=contract_data["bytecode"])
-        tx = contract.constructor(recipient).build_transaction({
-            "from": sender_address, "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 2000000, "gasPrice": w3_py.to_wei("50", "gwei"), "value": w3_py.to_wei(amount, "ether")
+    
+    # Parse request: "send 1 eth to 0x123..." or "send 1 ethereum to 0x123... every month"
+    match = re.search(r"send (\d+) (eth|ethereum) to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+))?", contract_request, re.IGNORECASE)
+    if not match:
+        return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"}), 400
+    
+    amount, _, recipient, frequency = int(match.group(1)), match.group(2), match.group(3), match.group(4).lower() if match.group(4) else "once"
+    fee = 0.001  # Our fee in ETH
+    total_value = w3_py.to_wei(amount + fee, "ether")  # User pays amount + fee
+    
+    # Check subscription limits
+    if current_user.subscription == "free" and frequency != "once":
+        return jsonify({"error": "Recurring contracts require Basic or Pro plan"}), 403
+    
+    contract_path = "../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json"
+    try:
+        with open(contract_path) as f:
+            contract_data = json.load(f)
+    except FileNotFoundError:
+        return jsonify({"error": "Contract file missing"}), 500
+    
+    contract = w3_py.eth.contract(abi=contract_data["abi"], bytecode=contract_data["bytecode"])
+    tx = contract.constructor(recipient).build_transaction({
+        "from": sender_address,
+        "nonce": w3_py.eth.get_transaction_count(sender_address),
+        "gas": 2000000,
+        "gasPrice": w3_py.to_wei("50", "gwei"),
+        "value": total_value  # Includes fee
+    })
+    
+    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+    try:
+        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+        contract_address = tx_receipt.contractAddress
+        
+        # Send fee to our address
+        fee_tx = {
+            "from": sender_address,
+            "to": ETH_PAYMENT_ADDRESS,
+            "value": w3_py.to_wei(fee, "ether"),
+            "nonce": w3_py.eth.get_transaction_count(sender_address),
+            "gas": 21000,
+            "gasPrice": w3_py.to_wei("50", "gwei")
+        }
+        signed_fee_tx = w3_py.eth.account.sign_transaction(fee_tx, sender_private_key)
+        w3_py.eth.send_raw_transaction(signed_fee_tx.raw_transaction)
+        
+        message = f"You sent {amount} ETH to {recipient}" + (f" every {frequency}" if frequency != "once" else "")
+        return jsonify({
+            "message": message,
+            "contract_address": contract_address,
+            "status": "success",
+            "tx_hash": w3_py.to_hex(tx_hash)
         })
-        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
-        try:
-            tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
-            tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
-            contract_address = tx_receipt.contractAddress
-            message = f"Success! Sent {amount} ETH to {recipient}" + (f" every {frequency}" if frequency != "once" else "")
-            return jsonify({"message": message, "contract_address": contract_address, "status": "success"})
-        except Exception as e:
-            return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
-    return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"})
+    except Exception as e:
+        return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
+
 
 @app.route("/api/create_dao", methods=["POST"])
 @login_required
@@ -1165,8 +1201,6 @@ def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
 @app.route("/api/analytics/<address>")
 @login_required
 def get_analytics(address):
-    # Fetches wallet analytics for an address
-    # Shows balance, transactions, etc., for the dashboard
     analytics = get_wallet_analytics(address)
     return jsonify(analytics) if "error" not in analytics else (jsonify({"error": analytics["error"]}), 400)
 '''
@@ -1182,73 +1216,141 @@ def get_news_api():
 @app.route("/api/query", methods=["POST"])
 @login_required
 def query():
-    # Handles user questions about crypto
-    # Answers with price for price queries or ChatGPT with optional block size/price for general questions
+    # Handles user questions about crypto with real-time blockchain data
+    # Answers with prices, block sizes, gas prices, or ChatGPT; no wallet analytics since users use MetaMask
     user_question = request.form.get("question", "").strip()
     normalized_question = normalize_question(user_question)
     history = current_user.history
-
-    # Helper function to get latest block size using Alchemy
-    def get_block_size(chain):
-        try:
-            if chain == "bitcoin":
-                # Bitcoin via Blockcypher (Alchemy doesnt natively support Bitcoin)
-                btc_url = f"https://api.blockcypher.com/v1/btc/main/blocks/{requests.get('https://api.blockcypher.com/v1/btc/main').json()['height']}"
-                block_data = requests.get(btc_url).json()
-                block_size = block_data.get("size", "N/A")
-                return f"Latest Bitcoin block size: {block_size} bytes"
-            elif chain == "ethereum":
-                eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-                payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": ["latest", True], "id": 1}
-                block_data = requests.post(eth_url, json=payload).json()
-                block_size = int(block_data["result"]["size"], 16)  # Convert hex to int
-                return f"Latest Ethereum block size: {block_size} bytes"
-            elif chain == "solana":
-                sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
-                payload = {"jsonrpc": "2.0", "method": "getBlockHeight", "id": 1}
-                height = requests.post(sol_url, json=payload).json()["result"]
-                payload = {"jsonrpc": "2.0", "method": "getBlock", "params": [height, {"encoding": "json"}], "id": 1}
-                block_data = requests.post(sol_url, json=payload).json()
-                block_size = len(json.dumps(block_data["result"]))  # Approximate size in bytes
-                return f"Latest Solana block size: {block_size} bytes"
-            return "Unsupported chain"
-        except Exception as e:
-            app.logger.error(f"Block size fetch failed for {chain}: {str(e)}")
-            return f"Error fetching block size: {str(e)}"
+    eth_url = f"https://eth-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
+    sol_url = f"https://solana-mainnet.g.alchemy.com/v2/{ALCHEMY_API_KEY}"
 
     if "price" in normalized_question:
+        # Handles price queries for Bitcoin, Ethereum, or Solana
         coin = "bitcoin" if "bitcoin" in user_question.lower() or "btc" in user_question.lower() else \
                "ethereum" if "ethereum" in user_question.lower() or "eth" in user_question.lower() else \
                "solana" if "solana" in user_question.lower() or "sol" in user_question.lower() else None
         if coin:
             price = get_crypto_price(coin)
-            answer = f"Current {coin.capitalize()} price: ${price} USD"
+            answer = f"Current {coin.capitalize()} price: ${price} USD."
         else:
-            answer = "Only BTC, ETH, SOL supported."
+            answer = "Sorry, I can only check Bitcoin, Ethereum, or Solana prices for now!"
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "trending" in normalized_question:
+        # Returns trending crypto data from CoinCap
+        trends = get_trending_crypto()
+        answer = "Here is what is trending in crypto:\n" + "\n".join([f"{t['topic']} ({t['snippet']})" for t in trends])
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "bitcoin block" in normalized_question:
+        # Fetches latest Bitcoin block height from blockchain.info
+        try:
+            btc_response = requests.get("https://blockchain.info/latestblock").json()
+            if "height" in btc_response:
+                block_number = btc_response["height"]
+                prompt = f"User asked: {user_question}. Latest Bitcoin block number is {block_number}. Answer simply."
+                ai_response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = ai_response.choices[0].message.content
+            else:
+                answer = "Oops! Could not fetch Bitcoin block data."
+        except Exception as e:
+            app.logger.error(f"Bitcoin block query failed: {str(e)}")
+            answer = "Something went wrong with Bitcoin block data - try again!"
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "ethereum block" in normalized_question:
+        # Fetches latest Ethereum block number from Alchemy
+        try:
+            payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+            response = requests.post(eth_url, json=payload).json()
+            if "result" in response:
+                block_number = int(response["result"], 16)
+                prompt = f"User asked: {user_question}. Latest Ethereum block number is {block_number}. Answer simply."
+                ai_response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = ai_response.choices[0].message.content
+            else:
+                answer = "Oops! Could not fetch Ethereum block data."
+        except Exception as e:
+            app.logger.error(f"Ethereum block query failed: {str(e)}")
+            answer = "Something went wrong with Ethereum block data - try again!"
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "solana block" in normalized_question:
+        # Fetches latest Solana slot number from Alchemy
+        try:
+            payload = {"jsonrpc": "2.0", "method": "getSlot", "params": [], "id": 1}
+            response = requests.post(sol_url, json=payload).json()
+            if "result" in response:
+                slot_number = response["result"]
+                prompt = f"User asked: {user_question}. Latest Solana slot number is {slot_number}. Answer simply."
+                ai_response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = ai_response.choices[0].message.content
+            else:
+                answer = "Oops! Could not fetch Solana block data."
+        except Exception as e:
+            app.logger.error(f"Solana block query failed: {str(e)}")
+            answer = "Something went wrong with Solana block data - try again!"
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "gas" in normalized_question:
+        # Fetches current Ethereum gas price from Alchemy
+        try:
+            payload = {"jsonrpc": "2.0", "method": "eth_gasPrice", "params": [], "id": 1}
+            response = requests.post(eth_url, json=payload).json()
+            if "result" in response:
+                gas_price = int(response["result"], 16) / 1e9  # Convert from Wei to Gwei
+                prompt = f"User asked: {user_question}. Current Ethereum gas price is {gas_price} Gwei. Answer simply."
+                ai_response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                answer = ai_response.choices[0].message.content
+            else:
+                answer = "Oops! Could not fetch gas price data."
+        except Exception as e:
+            app.logger.error(f"Gas price query failed: {str(e)}")
+            answer = "Something went wrong with gas price data - try again!"
+        history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
+    elif "transactions" in normalized_question:
+        # Fetches transaction count in the latest Ethereum block from Alchemy
+        try:
+            block_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+            block_response = requests.post(eth_url, json=block_payload).json()
+            if "result" in block_response:
+                latest_block = block_response["result"]
+                payload = {"jsonrpc": "2.0", "method": "eth_getBlockByNumber", "params": [latest_block, False], "id": 1}
+                response = requests.post(eth_url, json=payload).json()
+                if "result" in response and "transactions" in response["result"]:
+                    tx_count = len(response["result"]["transactions"])
+                    prompt = f"User asked: {user_question}. The latest Ethereum block has {tx_count} transactions. Answer simply."
+                    ai_response = client.chat.completions.create(
+                        model="gpt-3.5-turbo",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    answer = ai_response.choices[0].message.content
+                else:
+                    answer = "Oops! Could not fetch transaction data."
+            else:
+                answer = "Oops! Could not fetch block data."
+        except Exception as e:
+            app.logger.error(f"Transaction count query failed: {str(e)}")
+            answer = "Something went wrong with transaction data - try again!"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
     else:
+        # Default to ChatGPT for general crypto questions
         try:
-            # Use ChatGPT for general questions, enhancing with block size or price if relevant
-            prompt = f"Answer this crypto question: {user_question}. If applicable, include the latest block size or current price using available data."
             response = client.chat.completions.create(
                 model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=150
+                messages=[{"role": "user", "content": f"Answer about crypto: {user_question}"}],
+                max_tokens=100
             )
             answer = response.choices[0].message.content
-            # Fetch block size or price if mentioned in the response
-            if "block size" in answer.lower():
-                chain = "bitcoin" if "bitcoin" in user_question.lower() or "btc" in user_question.lower() else \
-                        "ethereum" if "ethereum" in user_question.lower() or "eth" in user_question.lower() else \
-                        "solana" if "solana" in user_question.lower() or "sol" in user_question.lower() else "ethereum"  # Default to Ethereum
-                answer += f"\n{get_block_size(chain)}"
-            if "price" in answer.lower() and "bitcoin" in user_question.lower():
-                answer += f"\nCurrent Bitcoin price: ${get_crypto_price('bitcoin')} USD"
-            elif "price" in answer.lower() and "ethereum" in user_question.lower():
-                answer += f"\nCurrent Ethereum price: ${get_crypto_price('ethereum')} USD"
-            elif "price" in answer.lower() and "solana" in user_question.lower():
-                answer += f"\nCurrent Solana price: ${get_crypto_price('solana')} USD"
         except Exception as e:
+            app.logger.error(f"ChatGPT query failed: {str(e)}")
             answer = f"Error: {str(e)}"
         history.insert(0, {"question": user_question, "answer": answer, "wallet_data": None})
 
@@ -1257,7 +1359,6 @@ def query():
     return jsonify({"answer": answer, "question": user_question, "history": history[:3]})
 
 
-'''
 @app.route("/api/subscribe", methods=["POST"])
 @login_required
 def subscribe():
@@ -1281,7 +1382,6 @@ def subscribe():
     except stripe.error.StripeError as e:
         app.logger.error(f"Stripe error: {str(e)}")
         return jsonify({"error": "Subscription failed"}), 500
-'''
 
 
 @app.route("/api/get_payment_address", methods=["GET"])
@@ -1307,6 +1407,7 @@ def subscription_status():
     except Exception as e:
         app.logger.error(f"Error fetching subscription status for {current_user.email}: {str(e)}")
         return jsonify({"error": "Failed to fetch subscription status"}), 500
+
 
 @app.route("/api/subscribe_eth", methods=["POST"])
 @login_required

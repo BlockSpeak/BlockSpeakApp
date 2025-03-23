@@ -36,6 +36,8 @@ function Dashboard({ account, logout, subscription }) {
   const [selectedCoin, setSelectedCoin] = useState(location.state?.selectedCoin || 'bitcoin'); // Coin selected for price graph
   const [contractRequest, setContractRequest] = useState(''); // User input for smart contract creation
   const [contractResult, setContractResult] = useState(''); // Result message from contract creation
+  // State to track transaction status for visual feedback, simplified to 'confirmed', 'done', or 'failed'
+  const [txStatus, setTxStatus] = useState(''); // Tracks 'confirmed', 'done', or 'failed'
   // Commented out: Wallet analytics state (not needed with MetaMask-only auth)
   // const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, transactions, tokens)
   const [news, setNews] = useState([]); // Array of latest crypto news items
@@ -54,13 +56,6 @@ function Dashboard({ account, logout, subscription }) {
   const [voteResult, setVoteResult] = useState(''); // Result message from voting on a proposal
   const [graphLoading, setGraphLoading] = useState(true); // Loading state for price graph
   const [graphError, setGraphError] = useState(null); // Error message for graph loading failures
-
-  // Effect: Pre-fills the contract request input with a default value based on selected coin
-  useEffect(() => {
-    if (selectedCoin) {
-      setContractRequest(`Send 1 ETH for ${selectedCoin}`);
-    }
-  }, [selectedCoin]);
 
   // Function: Checks if user is logged in and subscribed, redirects if not
   // Params: returnPath (string) - where to redirect after login, defaults to '/dashboard'
@@ -149,8 +144,12 @@ function Dashboard({ account, logout, subscription }) {
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
       setContractResult(response.data.message); // Display success message
+      // [CEO Co-pilot] Set confirmed state directly for green blinking, then solid "Success" after 2s
+      setTxStatus('confirmed');
     } catch (error) {
       setContractResult(error.response?.data?.message || 'Contract failed - check console!');
+      // [CEO Co-pilot] Set failed state for red text on error
+      setTxStatus('failed');
       console.error('Contract error:', error);
     }
   };
@@ -275,7 +274,7 @@ function Dashboard({ account, logout, subscription }) {
     <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-lg shadow-lg mb-6 text-center">
       <p className="text-lg text-white">
         You are on the <span className="font-semibold capitalize">{subscription} Plan</span> -{' '}
-        {subscription === 'basic' ? 'Unlimited contracts & basic analytics!' : 'Unlimited contracts, advanced analytics, & priority support!'}
+        {subscription === 'basic' ? 'Unlimited contracts & basic features!' : 'Unlimited contracts, advanced features, & priority support!'}
       </p>
     </div>
   ) : null;
@@ -293,6 +292,17 @@ function Dashboard({ account, logout, subscription }) {
   } else {
     graphContent = <p className="text-accent">No graph data available.</p>;
   }
+
+  // [CEO Co-pilot] Helper function to determine contract result classes, simplified without pending state
+  const getContractResultClasses = () => {
+    let classes = 'text-accent mb-4';
+    if (txStatus === 'confirmed') {
+      classes += ' animate-pulse text-green-400';
+    } else if (txStatus === 'failed') {
+      classes += ' text-red-400';
+    }
+    return classes;
+  };
 
   // Render: Main dashboard UI layout
   return (
@@ -337,7 +347,15 @@ function Dashboard({ account, logout, subscription }) {
               Create Contract
             </button>
           </form>
-          {contractResult && <p className="text-accent mb-4">{contractResult}</p>}
+          {/* [CEO Co-pilot] Simplified feedback: green blink (confirmed), solid green (done), red (failed) */}
+          {contractResult && (
+            <p className={getContractResultClasses()}>
+              {contractResult}
+              {/* [CEO Co-pilot] After 2s, confirmed becomes solid "Success" */}
+              {txStatus === 'confirmed' && setTimeout(() => setTxStatus('done'), 2000) && null}
+            </p>
+          )}
+          {txStatus === 'done' && <p className="text-green-400 mb-4">Success</p>}
 
           {/* DAO creation section */}
           <div className="bg-gray-800 p-4 rounded mb-4">

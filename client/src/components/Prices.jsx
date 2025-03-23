@@ -18,8 +18,8 @@ function Prices() {
   }, []);
 
   const handleTrade = (coinName) => {
-    // Navigate to dashboard and pass the coin name
-    navigate('/dashboard', { state: { selectedCoin: coinName } });
+    // Navigate to dashboard and pass the coin name for graph selection, no auto-fill
+    navigate('/dashboard', { state: { selectedCoin: coinName.toLowerCase() } });
   };
 
   return (
@@ -39,8 +39,8 @@ function Prices() {
             </div>
             <p className="mt-3 text-lg">Price: ${coin.price}</p>
             <p className="text-lg">Market Cap: ${coin.market_cap}</p>
-            <p className={`text-lg ${coin.change_percent > 0 ? 'text-green-400' : 'text-red-400'}`}>
-              24h Change: {coin.change_percent}%
+            <p className={`text-lg ${coin.change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+              24h Change: {coin.change}%
             </p>
             <button
               onClick={() => handleTrade(coin.name)}
