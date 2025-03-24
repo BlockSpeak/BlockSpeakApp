@@ -108,9 +108,18 @@ app.config['SESSION_COOKIE_SECURE'] = True  # Set to False for local non-HTTPS t
 # No flask_session initialization; Flask handles sessions natively
 
 
-# CORS setup
-CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
+# CORS setup - Move this before routes and ensure it applies to all responses
+cors = CORS(app, supports_credentials=True, resources={r"/*": {"origins": ["http://localhost:3000", "https://blockspeak.co"]}})
 logging.basicConfig(level=logging.INFO)
+
+@app.after_request
+def add_cors_headers(response):
+    # Ensure CORS headers are added even on errors
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000' if APP_ENV == "development" else 'https://blockspeak.co'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
 
 # Load API keys and Stripe secrets from .env
 ALCHEMY_API_KEY = os.getenv("ALCHEMY_API_KEY")  # For blockchain connections on Mainnet
@@ -192,12 +201,12 @@ def apply_csp(response):
     return response
 
 
-# Database setup: Simple SQLite for users and blog posts
+# Database setup: Simple SQLite for users, blog posts, and contracts
 def init_db():
-    # Creates the users and blog_posts tables if they dont exist
-    # Stores user email, password, subscription, Stripe ID, and query history
-    # NEW: Also stores blog posts for dynamic content
-    conn = sqlite3.connect("users.db")  # Connects to users.db file
+    # Creates the users, blog_posts, and contracts tables if they dont exist
+    # Stores user email, password, subscription, Stripe ID, query history
+    # NEW: Also stores blog posts for dynamic content and contracts for recurring payments
+    conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,7 +215,6 @@ def init_db():
         subscription TEXT DEFAULT 'free',
         stripe_customer_id TEXT,
         history TEXT DEFAULT '[]')''')
-    # NEW: Create blog_posts table with additional fields for category, tags, and image
     c.execute('''CREATE TABLE IF NOT EXISTS blog_posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -218,15 +226,25 @@ def init_db():
         category TEXT DEFAULT 'General',
         tags TEXT DEFAULT '',
         image TEXT DEFAULT 'blockspeakvert.svg')''')
-    # NEW: Add inline_image column if it doesn't exist for existing tables
+    # NEW: Add inline_image column if it doesn't exist for blog_posts
     c.execute("PRAGMA table_info(blog_posts)")
     columns = [col[1] for col in c.fetchall()]
     if 'inline_image' not in columns:
         c.execute("ALTER TABLE blog_posts ADD COLUMN inline_image TEXT DEFAULT NULL")
-    conn.commit()  # Saves changes
-    conn.close()  # Closes connection
+    # NEW: Create contracts table for recurring payments
+    c.execute('''CREATE TABLE IF NOT EXISTS contracts (
+        address TEXT PRIMARY KEY,
+        owner TEXT,
+        recipient TEXT,
+        amount INTEGER,
+        interval INTEGER,
+        day INTEGER,
+        next_payment INTEGER)''')
+    conn.commit()
+    conn.close()
 
 init_db()  # Runs the setup right away
+
 
 # NEW: Seed the blog posts table with sample data (optional)
 def seed_blog_posts():
@@ -671,34 +689,43 @@ def login_metamask():
     except Exception as e:
         return jsonify({"error": "Login failed"}), 500
 
+
 @app.route("/api/create_contract", methods=["POST"])
 @login_required
 def create_contract():
-    # Creates a smart contract based on user input
-    # Deploys a recurring payment contract if the request matches like "send 1 eth to 0x..." or "send 1 ethereum to 0x..."
     contract_request = request.form.get("contract_request")
     if not contract_request:
         return jsonify({"error": "No request provided"}), 400
     
-    w3_py = w3  # Use global w3 for Hardhat or Mainnet
+    w3_py = w3
     if not w3_py.is_connected():
+        app.logger.error("Blockchain connection failed")
         return jsonify({"error": "Blockchain not connected"}), 500
     
-    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else current_user.email
+    sender_address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" if NETWORK == "hardhat" else ETH_PAYMENT_ADDRESS
     sender_private_key = os.getenv("HARDHAT_PRIVATE_KEY") if NETWORK == "hardhat" else os.getenv("MAINNET_PRIVATE_KEY")
     if not sender_private_key:
+        app.logger.error(f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}")
         return jsonify({"error": f"Missing {'HARDHAT_PRIVATE_KEY' if NETWORK == 'hardhat' else 'MAINNET_PRIVATE_KEY'}"}), 500
     
-    # Parse request: "send 1 eth to 0x123..." or "send 1 ethereum to 0x123... every month"
-    match = re.search(r"send (\d+) (eth|ethereum) to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+))?", contract_request, re.IGNORECASE)
+    match = re.search(r"send (\d+) (eth|ethereum) to (0x[a-fA-F0-9]{40})(?:\s+every\s+(\w+)(?:\s+on\s+the\s+(\d+))?)", contract_request, re.IGNORECASE)
     if not match:
         return jsonify({"message": f"Unsupported request: '{contract_request}'", "status": "unsupported"}), 400
     
-    amount, _, recipient, frequency = int(match.group(1)), match.group(2), match.group(3), match.group(4).lower() if match.group(4) else "once"
-    fee = 0.001  # Our fee in ETH
-    total_value = w3_py.to_wei(amount + fee, "ether")  # User pays amount + fee
+    amount, _, recipient, frequency, day = match.group(1), match.group(2), match.group(3), match.group(4).lower() if match.group(4) else "once", match.group(5) or "0"
+    amount = int(amount)
+    day = int(day)
     
-    # Check subscription limits
+    intervals = {"once": 0, "day": 86400, "week": 604800, "month": 2592000, "year": 31536000}
+    interval = intervals.get(frequency, 0)
+    if frequency != "once" and interval == 0:
+        return jsonify({"error": "Invalid frequency"}), 400
+    if day > 31:
+        return jsonify({"error": "Day must be 1-31"}), 400
+    
+    fee = 0.001
+    total_value = w3_py.to_wei(amount + fee, "ether")
+    
     if current_user.subscription == "free" and frequency != "once":
         return jsonify({"error": "Recurring contracts require Basic or Pro plan"}), 403
     
@@ -706,37 +733,34 @@ def create_contract():
     try:
         with open(contract_path) as f:
             contract_data = json.load(f)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        app.logger.error(f"Contract artifact missing: {str(e)}")
         return jsonify({"error": "Contract file missing"}), 500
     
-    contract = w3_py.eth.contract(abi=contract_data["abi"], bytecode=contract_data["bytecode"])
-    tx = contract.constructor(recipient).build_transaction({
-        "from": sender_address,
-        "nonce": w3_py.eth.get_transaction_count(sender_address),
-        "gas": 2000000,
-        "gasPrice": w3_py.to_wei("50", "gwei"),
-        "value": total_value  # Includes fee
-    })
-    
-    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
     try:
+        contract = w3_py.eth.contract(abi=contract_data["abi"], bytecode=contract_data["bytecode"])
+        tx = contract.constructor(recipient, interval, day).build_transaction({
+            "from": sender_address,
+            "nonce": w3_py.eth.get_transaction_count(sender_address),
+            "gas": 2000000,
+            "gasPrice": w3_py.to_wei("50", "gwei"),
+            "value": total_value
+        })
+        
+        signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
         tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
         tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
         contract_address = tx_receipt.contractAddress
         
-        # Send fee to our address
-        fee_tx = {
-            "from": sender_address,
-            "to": ETH_PAYMENT_ADDRESS,
-            "value": w3_py.to_wei(fee, "ether"),
-            "nonce": w3_py.eth.get_transaction_count(sender_address),
-            "gas": 21000,
-            "gasPrice": w3_py.to_wei("50", "gwei")
-        }
-        signed_fee_tx = w3_py.eth.account.sign_transaction(fee_tx, sender_private_key)
-        w3_py.eth.send_raw_transaction(signed_fee_tx.raw_transaction)
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("CREATE TABLE IF NOT EXISTS contracts (address TEXT PRIMARY KEY, owner TEXT, recipient TEXT, amount INTEGER, interval INTEGER, day INTEGER, next_payment INTEGER, is_active INTEGER DEFAULT 1)")
+        c.execute("INSERT INTO contracts VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 
+                  (contract_address, sender_address, recipient, amount, interval, day, int(time.time()) + (interval or 2592000), 1))
+        conn.commit()
+        conn.close()
         
-        message = f"You sent {amount} ETH to {recipient}" + (f" every {frequency}" if frequency != "once" else "")
+        message = f"You sent {amount} ETH to {recipient}" + (f" every {frequency}" + (f" on the {day}" if day else "") if frequency != "once" else "")
         return jsonify({
             "message": message,
             "contract_address": contract_address,
@@ -744,7 +768,62 @@ def create_contract():
             "tx_hash": w3_py.to_hex(tx_hash)
         })
     except Exception as e:
+        app.logger.error(f"Transaction failed in create_contract: {str(e)}")
         return jsonify({"error": f"Transaction failed: {str(e)}"}), 500
+
+
+@app.route("/api/send_payment", methods=["POST"])
+@login_required
+def send_payment():
+    contract_address = request.form.get("contract_address")
+    if not is_wallet_address(contract_address):
+        return jsonify({"error": "Invalid contract address"}), 400
+    
+    w3_py = w3
+    sender_address = current_user.email if NETWORK == "mainnet" else "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    sender_private_key = os.getenv("MAINNET_PRIVATE_KEY") if NETWORK == "mainnet" else os.getenv("HARDHAT_PRIVATE_KEY")
+    if not sender_private_key:
+        return jsonify({"error": "Missing private key"}), 500
+    
+    with open("../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json") as f:
+        contract_data = json.load(f)
+    
+    contract = w3_py.eth.contract(address=contract_address, abi=contract_data["abi"])
+    amount = contract.functions.amount().call()
+    total_value = w3_py.to_wei(amount * 1.01, "ether")
+    
+    tx = contract.functions.sendPayment().build_transaction({
+        "from": sender_address,
+        "nonce": w3_py.eth.get_transaction_count(sender_address),
+        "gas": 200000,
+        "gasPrice": w3_py.to_wei("50", "gwei"),
+        "value": total_value
+    })
+    
+    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+    tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+    
+    if tx_receipt.status == 1:
+        next_payment = contract.functions.nextPayment().call()
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("UPDATE contracts SET next_payment = ? WHERE address = ?", (next_payment, contract_address))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Payment sent successfully!", "tx_hash": w3_py.to_hex(tx_hash)})
+    return jsonify({"error": "Payment failed"}), 400
+
+
+@app.route("/api/user_contracts", methods=["GET"])
+@login_required
+def get_user_contracts():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT address, recipient, amount, interval, day, next_payment FROM contracts WHERE owner = ?", (current_user.email,))
+    contracts = [{"address": row[0], "recipient": row[1], "amount": row[2], "interval": row[3], "day": row[4], "next_payment": row[5]} for row in c.fetchall()]
+    conn.close()
+    return jsonify({"contracts": contracts})
 
 
 @app.route("/api/create_dao", methods=["POST"])
@@ -963,6 +1042,112 @@ def get_proposals():
     except Exception as e:
         app.logger.error(f"Get proposals failed: {str(e)}")
         return jsonify({"error": f"Failed to fetch proposals: {str(e)}"}), 500
+
+
+@app.route("/api/automatic_payment", methods=["POST"])
+@login_required
+def automatic_payment():
+    contract_address = request.form.get("contract_address")
+    if not is_wallet_address(contract_address):
+        return jsonify({"error": "Invalid contract address"}), 400
+    
+    w3_py = w3
+    sender_address = ETH_PAYMENT_ADDRESS
+    sender_private_key = os.getenv("MAINNET_PRIVATE_KEY")
+    if not sender_private_key:
+        app.logger.error("Missing MAINNET_PRIVATE_KEY")
+        return jsonify({"error": "Mainnet wallet not configured"}), 500
+    
+    with open("../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json") as f:
+        contract_data = json.load(f)
+    
+    contract = w3_py.eth.contract(address=contract_address, abi=contract_data["abi"])
+    amount = contract.functions.amount().call()
+    total_value = w3_py.to_wei(amount * 1.01, "ether")
+    
+    if contract.functions.nextPayment().call() > int(time.time()):
+        return jsonify({"message": "Payment not due yet"}), 200
+    
+    tx = contract.functions.sendPayment().build_transaction({
+        "from": sender_address,
+        "nonce": w3_py.eth.get_transaction_count(sender_address),
+        "gas": 200000,
+        "gasPrice": w3_py.to_wei("50", "gwei"),
+        "value": total_value
+    })
+    
+    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+    try:
+        tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+        tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+        if tx_receipt.status == 1:
+            next_payment = contract.functions.nextPayment().call()
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            c.execute("UPDATE contracts SET next_payment = ? WHERE address = ?", (next_payment, contract_address))
+            conn.commit()
+            conn.close()
+            app.logger.info(f"Auto-payment successful for {contract_address}: {w3_py.to_hex(tx_hash)}")
+            return jsonify({"message": "Auto-payment sent!", "tx_hash": w3_py.to_hex(tx_hash)})
+        return jsonify({"error": "Auto-payment failed"}), 400
+    except Exception as e:
+        app.logger.error(f"Auto-payment failed for {contract_address}: {str(e)}")
+        return jsonify({"error": f"Auto-payment failed: {str(e)}"}), 500
+
+@app.route("/api/cancel_contract", methods=["POST"])
+@login_required
+def cancel_contract():
+    contract_address = request.form.get("contract_address")
+    confirmation = request.form.get("confirmation") == "true"
+    if not is_wallet_address(contract_address):
+        return jsonify({"error": "Invalid contract address"}), 400
+    if not confirmation:
+        return jsonify({"message": "Please confirm cancellation"}), 400
+    
+    w3_py = w3
+    sender_address = current_user.email if NETWORK == "mainnet" else "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+    sender_private_key = os.getenv("MAINNET_PRIVATE_KEY") if NETWORK == "mainnet" else os.getenv("HARDHAT_PRIVATE_KEY")
+    
+    with open("../skillchain_contracts/artifacts/contracts/RecurringPayment.sol/RecurringPayment.json") as f:
+        contract_data = json.load(f)
+    
+    contract = w3_py.eth.contract(address=contract_address, abi=contract_data["abi"])
+    tx = contract.functions.cancel().build_transaction({
+        "from": sender_address,
+        "nonce": w3_py.eth.get_transaction_count(sender_address),
+        "gas": 100000,
+        "gasPrice": w3_py.to_wei("50", "gwei")
+    })
+    
+    signed_tx = w3_py.eth.account.sign_transaction(tx, sender_private_key)
+    tx_hash = w3_py.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt = w3_py.eth.wait_for_transaction_receipt(tx_hash)
+    
+    if tx_receipt.status == 1:
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("UPDATE contracts SET is_active = 0 WHERE address = ?", (contract_address,))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Contract cancelled!", "tx_hash": w3_py.to_hex(tx_hash)})
+    return jsonify({"error": "Cancellation failed"}), 400
+
+
+def run_auto_payments():
+    """Cron job to check and trigger payments."""
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT address FROM contracts WHERE next_payment <= ? AND is_active = 1", (int(time.time()),))
+    contracts = [row[0] for row in c.fetchall()]
+    conn.close()
+    
+    for contract_address in contracts:
+        response = requests.post(
+            "http://127.0.0.1:8080/api/automatic_payment" if APP_ENV == "development" else "https://blockspeak.onrender.com/api/automatic_payment",
+            data={"contract_address": contract_address},
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        app.logger.info(f"Auto-payment result for {contract_address}: {response.json()}")
 
 
 def add_bulk_blog_posts(new_posts_only=True, num_posts=1):
@@ -1554,9 +1739,14 @@ def start_session():
 def serve_image(filename):
     return send_from_directory("static/images", filename)
 
+# Update __main__ to include cron-like behavior
 if __name__ == "__main__":
     import sys
     if "--cron" in sys.argv:
         add_bulk_blog_posts(new_posts_only=True, num_posts=1)
+    elif "--auto" in sys.argv:
+        while True:
+            run_auto_payments()
+            time.sleep(86400)  # Run daily
     else:
-        app.run(host="0.0.0.0", port=8080, debug=True)
+        app.run(host="0.0.0.0", port=8080, debug=False)

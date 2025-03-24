@@ -29,133 +29,164 @@ const coinOptions = [
 // Main Dashboard component: Displays the user interface after login
 // Props: account (user’s wallet address), logout (function to log out), subscription (user’s plan: free, basic, pro)
 function Dashboard({ account, logout, subscription }) {
-  const navigate = useNavigate(); // Hook for redirecting to other pages (e.g., login or subscribe)
-  const location = useLocation(); // Hook to get navigation state (e.g., selected coin from previous page)
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // State variables for managing dashboard data and UI interactions
-  const [selectedCoin, setSelectedCoin] = useState(location.state?.selectedCoin || 'bitcoin'); // Coin selected for price graph
-  const [contractRequest, setContractRequest] = useState(''); // User input for smart contract creation
-  const [contractResult, setContractResult] = useState(''); // Result message from contract creation
-  // State to track transaction status for visual feedback, simplified to 'confirmed', 'done', or 'failed'
-  const [txStatus, setTxStatus] = useState(''); // Tracks 'confirmed', 'done', or 'failed'
-  // Commented out: Wallet analytics state (not needed with MetaMask-only auth)
-  // const [analytics, setAnalytics] = useState(null); // Wallet analytics data (balance, transactions, tokens)
-  const [news, setNews] = useState([]); // Array of latest crypto news items
-  const [query, setQuery] = useState(''); // User input for crypto-related questions
-  const [queryResult, setQueryResult] = useState(''); // Answer to the crypto query from backend
-  const [topCoins, setTopCoins] = useState([]); // Array of top cryptocurrency data
-  const [graphData, setGraphData] = useState(null); // Data for rendering the price graph
-  const [daoName, setDaoName] = useState(''); // User input for DAO name
-  const [daoDescription, setDaoDescription] = useState(''); // User input for DAO description
-  const [daoResult, setDaoResult] = useState(''); // Result message from DAO creation
-  const [daoAddress, setDaoAddress] = useState(''); // DAO address for joining or voting
-  const [joinResult, setJoinResult] = useState(''); // Result message from joining a DAO
-  const [proposalDescription, setProposalDescription] = useState(''); // User input for proposal description
-  const [proposalResult, setProposalResult] = useState(''); // Result message from proposal creation
-  const [proposals, setProposals] = useState([]); // Array of DAO proposals
-  const [voteResult, setVoteResult] = useState(''); // Result message from voting on a proposal
-  const [graphLoading, setGraphLoading] = useState(true); // Loading state for price graph
-  const [graphError, setGraphError] = useState(null); // Error message for graph loading failures
+  const [selectedCoin, setSelectedCoin] = useState(location.state?.selectedCoin || 'bitcoin');
+  const [contractRequest, setContractRequest] = useState('');
+  const [contractResult, setContractResult] = useState('');
+  const [txStatus, setTxStatus] = useState(''); // 'confirmed', 'done', or 'failed'
+  const [contracts, setContracts] = useState([]); // Track deployed contracts
+  const [news, setNews] = useState([]);
+  const [query, setQuery] = useState('');
+  const [queryResult, setQueryResult] = useState('');
+  const [topCoins, setTopCoins] = useState([]);
+  const [graphData, setGraphData] = useState(null);
+  const [daoName, setDaoName] = useState('');
+  const [daoDescription, setDaoDescription] = useState('');
+  const [daoResult, setDaoResult] = useState('');
+  const [daoAddress, setDaoAddress] = useState('');
+  const [joinResult, setJoinResult] = useState('');
+  const [proposalDescription, setProposalDescription] = useState('');
+  const [proposalResult, setProposalResult] = useState('');
+  const [proposals, setProposals] = useState([]);
+  const [voteResult, setVoteResult] = useState('');
+  const [graphLoading, setGraphLoading] = useState(true);
+  const [graphError, setGraphError] = useState(null);
 
-  // Function: Checks if user is logged in and subscribed, redirects if not
-  // Params: returnPath (string) - where to redirect after login, defaults to '/dashboard'
-  // Returns: boolean - true if redirected, false if user can proceed
-  const requireLoginOrSubscription = (returnPath = '/dashboard') => {
-    if (!account) {
-      navigate(`/login?return=${returnPath}`); // Redirect to login if no account
-      return true;
-    }
-    if (subscription === 'free') {
-      navigate('/subscribe'); // Redirect to subscription page if on free plan
-      return true;
-    }
-    return false; // Proceed if logged in and subscribed
-  };
-
-  // Effect: Loads initial dashboard data (news, top coins, graph) when account or selectedCoin changes
+  // Fetch existing contracts
   useEffect(() => {
-    let mounted = true; // Flag to prevent state updates after component unmounts
-    setGraphLoading(true); // Start loading graph
-    setGraphError(null); // Clear previous graph errors
+    const fetchContracts = async () => {
+      try {
+        const response = await axios.get(`${BASE_URL}/api/user_contracts`, { withCredentials: true });
+        setContracts(response.data.contracts || []);
+      } catch (error) {
+        console.error('Fetch contracts error:', error);
+      }
+    };
+    if (account) fetchContracts();
+  }, [account]);
 
-    // Fetch news and top coins from the homepage API
+  // Load initial dashboard data
+  useEffect(() => {
+    let mounted = true;
+    setGraphLoading(true);
+    setGraphError(null);
+
     axios.get(`${BASE_URL}/api/`)
       .then((res) => {
         if (mounted) {
-          setNews(res.data.news_items); // Update news state
-          setTopCoins(res.data.top_coins); // Update top coins state
+          setNews(res.data.news_items);
+          setTopCoins(res.data.top_coins);
         }
       })
       .catch((err) => console.error('Home data error:', err));
 
     if (account) {
-      // Commented out: Wallet analytics fetch (not applicable with MetaMask-only auth)
-      /*
-      axios.get(`${BASE_URL}/api/analytics/${account}`, { withCredentials: true })
-        .then((res) => { if (mounted) setAnalytics(res.data); })
-        .catch((err) => {
-          console.error('Analytics error:', err);
-          if (mounted) setAnalytics({ error: 'Analytics unavailable' });
-        });
-      */
-
-      // Function: Fetches graph data for the selected coin
       const fetchGraph = async () => {
-        setGraphLoading(true); // Indicate graph is loading
-        setGraphError(null); // Clear any previous errors
+        setGraphLoading(true);
+        setGraphError(null);
         try {
           const response = await axios.get(`${BASE_URL}/api/coin_graph/${selectedCoin}`, { withCredentials: true });
           if (mounted) {
             setGraphData({
-              labels: response.data.dates, // Dates for x-axis
-              datasets: [
-                {
-                  label: `${selectedCoin.charAt(0).toUpperCase() + selectedCoin.slice(1)} Price`, // Coin name
-                  data: response.data.prices, // Price data for y-axis
-                  borderColor: coinOptions.find((c) => c.id === selectedCoin)?.color || '#ffffff', // Coin-specific color
-                  fill: false, // No fill under the line
-                  tension: 0.4, // Smooth the graph line
-                },
-              ],
+              labels: response.data.dates,
+              datasets: [{
+                label: `${selectedCoin.charAt(0).toUpperCase() + selectedCoin.slice(1)} Price`,
+                data: response.data.prices,
+                borderColor: coinOptions.find((c) => c.id === selectedCoin)?.color || '#ffffff',
+                fill: false,
+                tension: 0.4,
+              }],
             });
           }
         } catch (error) {
           console.error('Graph error:', error);
-          if (mounted) setGraphError('Failed to load graph data. Please try again later.'); // Display error to user
+          if (mounted) setGraphError('Failed to load graph data. Please try again later.');
         } finally {
-          if (mounted) setGraphLoading(false); // Stop loading indicator
+          if (mounted) setGraphLoading(false);
         }
       };
-      fetchGraph(); // Execute the graph fetching logic
+      fetchGraph();
     }
-    // Cleanup function to prevent memory leaks
-    return () => { mounted = false; }; // Set mounted to false when component unmounts
-  }, [account, selectedCoin]); // Dependencies: re-run when account or selectedCoin changes
+    return () => { mounted = false; };
+  }, [account, selectedCoin]);
 
-  // Function: Creates a smart contract by sending the request to the backend
-  // Params: e (event) - Form submission event
+  const requireLoginOrSubscription = (returnPath = '/dashboard') => {
+    if (!account) {
+      navigate(`/login?return=${returnPath}`);
+      return true;
+    }
+    if (subscription === 'free') {
+      navigate('/subscribe');
+      return true;
+    }
+    return false;
+  };
+
   const createContract = async (e) => {
     e.preventDefault();
-    if (requireLoginOrSubscription()) return; // Check login/subscription
+    if (requireLoginOrSubscription()) return;
     try {
       const response = await axios.post(
         `${BASE_URL}/api/create_contract`,
-        new URLSearchParams({ contract_request: contractRequest }), // Form-encoded data
+        new URLSearchParams({ contract_request: contractRequest }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setContractResult(response.data.message); // Display success message
-      // [CEO Co-pilot] Set confirmed state directly for green blinking, then solid "Success" after 2s
+      setContractResult(response.data.message);
       setTxStatus('confirmed');
+      // Refresh contracts list after successful creation
+      const contractsResponse = await axios.get(`${BASE_URL}/api/user_contracts`, { withCredentials: true });
+      setContracts(contractsResponse.data.contracts || []);
+      setContractRequest(''); // Clear input field
     } catch (error) {
       setContractResult(error.response?.data?.message || 'Contract failed - check console!');
-      // [CEO Co-pilot] Set failed state for red text on error
       setTxStatus('failed');
       console.error('Contract error:', error);
     }
   };
 
-  // Function: Creates a DAO by sending name and description to the backend
-  // Params: e (event) - Form submission event
+  const sendPayment = async (contractAddress) => {
+    try {
+      const response = await axios.post(
+        `${BASE_URL}/api/send_payment`,
+        new URLSearchParams({ contract_address: contractAddress }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
+      );
+      setContractResult(response.data.message);
+      setTxStatus('confirmed');
+      // Refresh contracts list
+      const contractsResponse = await axios.get(`${BASE_URL}/api/user_contracts`, { withCredentials: true });
+      setContracts(contractsResponse.data.contracts || []);
+    } catch (error) {
+      setContractResult(error.response?.data?.message || 'Payment failed - check console!');
+      setTxStatus('failed');
+      console.error('Payment error:', error);
+    }
+  };
+
+  const cancelContract = async (contractAddress) => {
+    if (window.confirm('Are you sure you want to cancel this recurring payment?')) {
+      try {
+        const response = await axios.post(
+          `${BASE_URL}/api/cancel_contract`,
+          new URLSearchParams({ contract_address: contractAddress, confirmation: 'true' }),
+          { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
+        );
+        setContractResult(response.data.message);
+        setTxStatus('confirmed');
+        // Refresh contracts list after cancellation
+        const contractsResponse = await axios.get(`${BASE_URL}/api/user_contracts`, { withCredentials: true });
+        setContracts(contractsResponse.data.contracts || []);
+      } catch (error) {
+        setContractResult(error.response?.data?.message || 'Cancellation failed - check console!');
+        setTxStatus('failed');
+        console.error('Cancel error:', error);
+      }
+    }
+  };
+
   const createDao = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -165,17 +196,15 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ dao_name: daoName, dao_description: daoDescription }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setDaoResult(response.data.message); // Display DAO creation result
-      const addressMatch = response.data.message.match(/Address: (0x[a-fA-F0-9]{40})/); // Extract DAO address
-      if (addressMatch) setDaoAddress(addressMatch[1]); // Set address for joining/voting
+      setDaoResult(response.data.message);
+      const addressMatch = response.data.message.match(/Address: (0x[a-fA-F0-9]{40})/);
+      if (addressMatch) setDaoAddress(addressMatch[1]);
     } catch (error) {
       setDaoResult(error.response?.data?.error || 'Oops! Something went wrong. Try again later.');
       console.error('DAO error:', error);
     }
   };
 
-  // Function: Joins a DAO by sending its address to the backend
-  // Params: e (event) - Form submission event
   const joinDao = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -186,16 +215,14 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ dao_address: daoAddress }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setJoinResult(response.data.message); // Display join result
-      fetchProposals(); // Load proposals after joining
+      setJoinResult(response.data.message);
+      fetchProposals();
     } catch (error) {
       setJoinResult(error.response?.data?.error || 'Sorry, we couldn’t join the DAO. Try again!');
       console.error('Join DAO error:', error);
     }
   };
 
-  // Function: Creates a proposal for a DAO
-  // Params: e (event) - Form submission event
   const createProposal = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -207,17 +234,15 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ dao_address: daoAddress, description: proposalDescription }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setProposalResult(response.data.message); // Display proposal result
-      setProposalDescription(''); // Clear input
-      fetchProposals(); // Refresh proposal list
+      setProposalResult(response.data.message);
+      setProposalDescription('');
+      fetchProposals();
     } catch (error) {
       setProposalResult(error.response?.data?.error || 'Sorry, we couldn’t create your proposal. Try again!');
       console.error('Create proposal error:', error);
     }
   };
 
-  // Function: Votes on a DAO proposal
-  // Params: proposalId (number) - ID of the proposal, voteChoice (boolean) - true for yes, false for no
   const voteOnProposal = async (proposalId, voteChoice) => {
     if (requireLoginOrSubscription()) return;
     if (!daoAddress) return alert('Please enter a DAO address!');
@@ -227,15 +252,14 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ dao_address: daoAddress, proposal_id: proposalId, vote: voteChoice }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setVoteResult(response.data.message); // Display vote result
-      fetchProposals(); // Refresh proposals after voting
+      setVoteResult(response.data.message);
+      fetchProposals();
     } catch (error) {
       setVoteResult(error.response?.data?.error || 'Sorry, we couldn’t record your vote. Try again!');
       console.error('Vote error:', error);
     }
   };
 
-  // Function: Fetches all proposals for the current DAO
   const fetchProposals = async () => {
     if (!daoAddress || requireLoginOrSubscription()) return;
     try {
@@ -244,15 +268,13 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ dao_address: daoAddress }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setProposals(response.data.proposals || []); // Update proposal list
+      setProposals(response.data.proposals || []);
     } catch (error) {
       console.error('Fetch proposals error:', error);
-      setProposals([]); // Clear proposals on error
+      setProposals([]);
     }
   };
 
-  // Function: Asks a crypto-related question and gets an answer from the backend
-  // Params: e (event) - Form submission event
   const askQuery = async (e) => {
     e.preventDefault();
     if (requireLoginOrSubscription()) return;
@@ -262,14 +284,13 @@ function Dashboard({ account, logout, subscription }) {
         new URLSearchParams({ question: query }),
         { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, withCredentials: true },
       );
-      setQueryResult(response.data.answer); // Display query answer
+      setQueryResult(response.data.answer);
     } catch (error) {
       setQueryResult(error.response?.data?.message || 'Query failed - check console!');
       console.error('Query error:', error);
     }
   };
 
-  // Component: Displays a welcome banner for paid users (Basic or Pro plans)
   const welcomeBanner = subscription !== 'free' ? (
     <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 rounded-lg shadow-lg mb-6 text-center">
       <p className="text-lg text-white">
@@ -279,7 +300,6 @@ function Dashboard({ account, logout, subscription }) {
     </div>
   ) : null;
 
-  // Variable: Determines what to display in the graph section based on loading, error, or data
   let graphContent;
   if (graphLoading) {
     graphContent = <p className="text-accent">Loading graph...</p>;
@@ -287,13 +307,12 @@ function Dashboard({ account, logout, subscription }) {
     graphContent = <p className="text-red-400">{graphError}</p>;
   } else if (graphData) {
     graphContent = (
-      <Line data={graphData} options={{ responsive: true, scales: { y: { beginAtZero: false } } }} /> // Render graph
+      <Line data={graphData} options={{ responsive: true, scales: { y: { beginAtZero: false } } }} />
     );
   } else {
     graphContent = <p className="text-accent">No graph data available.</p>;
   }
 
-  // [CEO Co-pilot] Helper function to determine contract result classes, simplified without pending state
   const getContractResultClasses = () => {
     let classes = 'text-accent mb-4';
     if (txStatus === 'confirmed') {
@@ -304,25 +323,16 @@ function Dashboard({ account, logout, subscription }) {
     return classes;
   };
 
-  // Render: Main dashboard UI layout
   return (
     <div className="bg-dark text-white min-h-screen p-4 overflow-hidden">
-      {/* Header with welcome message */}
       <h1 className="text-4xl font-bold text-primary mb-4 text-center">
         {subscription !== 'free' ? 'Welcome to Your BlockSpeak Dashboard' : 'BlockSpeak Dashboard'}
       </h1>
-      {/* Connection status and logout button */}
       <p className="text-accent mb-4 text-center">
         {account ? (
           <>
             Connected: {account.slice(0, 6)}...{account.slice(-4)} ({subscription})
-            <button
-              onClick={async () => {
-                await logout(); // Logout user
-                navigate('/'); // Redirect to homepage
-              }}
-              className="ml-2 text-blue-400 hover:underline"
-            >
+            <button onClick={async () => { await logout(); navigate('/'); }} className="ml-2 text-blue-400 hover:underline">
               Logout
             </button>
           </>
@@ -330,34 +340,63 @@ function Dashboard({ account, logout, subscription }) {
           'Not connected - log in to unlock all features!'
         )}
       </p>
-      {welcomeBanner} {/* Display welcome banner for paid users */}
+      {welcomeBanner}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          {/* Form to create a smart contract */}
           <form onSubmit={createContract} className="mb-4">
             <input
               type="text"
               value={contractRequest}
               onChange={(e) => setContractRequest(e.target.value)}
-              placeholder="e.g., Send 1 ETH to 0x123..."
+              placeholder="e.g., Send 1 ETH to 0x123 every month on the 30th"
               className="w-full p-2 mb-2 text-dark rounded border border-accent"
-              disabled={!account || subscription === 'free'} // Disable if not logged in or on free plan
+              disabled={!account || subscription === 'free'}
             />
             <button type="submit" className="bg-primary hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
-              Create Contract
+              Create Recurring Payment
             </button>
           </form>
-          {/* [CEO Co-pilot] Simplified feedback: green blink (confirmed), solid green (done), red (failed) */}
           {contractResult && (
             <p className={getContractResultClasses()}>
               {contractResult}
-              {/* [CEO Co-pilot] After 2s, confirmed becomes solid "Success" */}
               {txStatus === 'confirmed' && setTimeout(() => setTxStatus('done'), 2000) && null}
             </p>
           )}
           {txStatus === 'done' && <p className="text-green-400 mb-4">Success</p>}
 
-          {/* DAO creation section */}
+          {/* Display existing contracts */}
+          <div className="bg-gray-800 p-4 rounded mb-4">
+            <h2 className="text-xl font-bold text-primary">Your Recurring Payments</h2>
+            {contracts.length > 0 ? (
+              contracts.map((contract) => (
+                <div key={contract.address} className="bg-gray-700 p-3 rounded mt-2">
+                  <p>Recipient: {contract.recipient.slice(0, 6)}...{contract.recipient.slice(-4)}</p>
+                  <p>Amount: {contract.amount} ETH</p>
+                  <p>Next Payment: {new Date(contract.next_payment * 1000).toLocaleDateString()}</p>
+                  <p>Status: {contract.is_active ? 'Active' : 'Cancelled'}</p>
+                  {contract.is_active && (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => sendPayment(contract.address)}
+                        className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded mr-2"
+                      >
+                        Send Now
+                      </button>
+                      <button
+                        onClick={() => cancelContract(contract.address)}
+                        className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-2 rounded"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-accent">No recurring payments yet—create one above!</p>
+            )}
+          </div>
+
           <div className="bg-gray-800 p-4 rounded mb-4">
             <h2 className="text-xl font-bold text-primary">What is a DAO?</h2>
             <p className="text-accent">
@@ -398,7 +437,6 @@ function Dashboard({ account, logout, subscription }) {
             )}
           </div>
 
-          {/* DAO joining and proposal management */}
           <div className="bg-gray-800 p-4 rounded mb-4">
             <h2 className="text-xl font-bold text-primary">Join & Manage Your Group</h2>
             <p className="text-accent">
@@ -423,7 +461,6 @@ function Dashboard({ account, logout, subscription }) {
             )}
             {joinResult.includes('Joined DAO') && (
               <>
-                {/* Form to propose an idea */}
                 <form onSubmit={createProposal} className="mt-4">
                   <label className="block text-accent mb-1">Propose an Idea (e.g., Host an art event)</label>
                   <input
@@ -441,7 +478,6 @@ function Dashboard({ account, logout, subscription }) {
                 {proposalResult && (
                   <p className={proposalResult.includes('Proposal created!') ? 'text-green-400' : 'text-red-400'}>{proposalResult}</p>
                 )}
-                {/* Display list of proposals */}
                 <div className="mt-4">
                   <h3 className="text-lg font-bold text-primary">Group Ideas</h3>
                   {proposals.length > 0 ? (
@@ -479,27 +515,8 @@ function Dashboard({ account, logout, subscription }) {
               </>
             )}
           </div>
-
-          {/* Commented out: Wallet analytics display (not applicable with MetaMask-only auth) */}
-          {/*
-          {analytics && (
-            <div className="bg-gray-800 p-4 rounded">
-              <h2 className="text-xl font-bold text-primary">Wallet Analytics</h2>
-              {analytics.error ? (
-                <p className="text-red-400">{analytics.error}</p>
-              ) : (
-                <>
-                  <p>Balance: {analytics.balance}</p>
-                  <p>Transactions: {analytics.tx_count}</p>
-                  <p>Top Tokens: {analytics.top_tokens}</p>
-                </>
-              )}
-            </div>
-          )}
-          */}
         </div>
         <div>
-          {/* Form to ask crypto-related questions */}
           <form onSubmit={askQuery} className="mb-4">
             <input
               type="text"
@@ -515,7 +532,6 @@ function Dashboard({ account, logout, subscription }) {
           </form>
           {queryResult && <p className="text-accent mb-4">{queryResult}</p>}
 
-          {/* Dropdown to select a coin for the price graph */}
           <div className="flex justify-center mb-4">
             <select
               value={selectedCoin}
@@ -528,7 +544,6 @@ function Dashboard({ account, logout, subscription }) {
             </select>
           </div>
 
-          {/* Price graph display */}
           <div className="bg-gray-800 p-4 rounded">
             <h2 className="text-xl font-bold text-primary">{selectedCoin.toUpperCase()} Price (7 Days)</h2>
             {graphContent}
@@ -536,7 +551,6 @@ function Dashboard({ account, logout, subscription }) {
         </div>
       </div>
 
-      {/* Top coins section */}
       <div className="mt-4">
         <h2 className="text-xl font-bold text-primary">Top Coins</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -551,7 +565,6 @@ function Dashboard({ account, logout, subscription }) {
         </div>
       </div>
 
-      {/* Latest news section */}
       <div className="mt-4">
         <h2 className="text-xl font-bold text-primary">Latest News</h2>
         {news.map((item, idx) => (

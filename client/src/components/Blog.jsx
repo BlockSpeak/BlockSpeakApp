@@ -132,7 +132,7 @@ function Blog() {
           </div>
         </InfiniteScroll>
         <div className="mt-4 text-center">
-          <p className="text-gray-400">[Ad] Discover crypto tools with Coinzilla</p>
+          <p className="text-gray-400">[Ad] Discover crypto tools with Block Speak</p>
         </div>
       </div>
     </>
